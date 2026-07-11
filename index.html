@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Economía Argentina — Panel en vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#10161a; --bg-2:#151d21; --panel:#1a2327; --panel-2:#1e292d; --line:#2a373b;
@@ -15,9 +18,10 @@
   body{
     background: radial-gradient(ellipse at 15% -10%, #182124 0%, transparent 55%),
       radial-gradient(ellipse at 100% 0%, #17201f 0%, transparent 50%), var(--bg);
-    color:var(--chalk); font-family: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    color:var(--chalk); font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     min-height:100vh; padding:16px; font-size:14px;
   }
+  .mono{font-family: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums;}
   .wrap{max-width:1240px;margin:0 auto;}
 
   header{display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px;}
@@ -142,10 +146,15 @@
     </div>
     <div class="clockbox">
       <span><span class="dot-live"></span><span id="lastUpdate">conectando…</span></span>
-      <span class="time" id="clock">--:--:--</span>
+      <span class="time mono" id="clock">--:--:--</span>
       <button class="refresh-btn" onclick="loadAll()">↻ Actualizar</button>
     </div>
   </header>
+
+  <div class="panel" id="resumenPanel" style="display:none;">
+    <h2>🗣️ Resumen del día</h2>
+    <div id="resumenBox" style="font-size:14px; line-height:1.5;"></div>
+  </div>
 
   <div class="kpi-grid" id="kpiGrid">
     <div class="kpi"><div class="k">cargando</div><div class="v-row"><span class="v">…</span></div></div>
@@ -216,7 +225,30 @@ const CASA_LABELS = { oficial:'Oficial', blue:'Blue', bolsa:'MEP', contadoconliq
 async function loadDolares(){
   const res = await fetch('https://dolarapi.com/v1/dolares');
   if(!res.ok) throw new Error('dolarapi '+res.status);
-  STATE.dolares = await res.json(); return STATE.dolares;
+  STATE.dolares = await res.json();
+  try{
+    const r2 = await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares');
+    if(r2.ok){
+      const hist = await r2.json();
+      const byCasa = {};
+      hist.forEach(d=>{ (byCasa[d.casa]=byCasa[d.casa]||[]).push(d); });
+      Object.keys(byCasa).forEach(k=> byCasa[k].sort((a,b)=> a.fecha.localeCompare(b.fecha)));
+      STATE.dolarHist = byCasa;
+    }
+  }catch(e){ console.warn('histórico dólar no disponible', e); }
+  return STATE.dolares;
+}
+function norm(s){ return (s||'').toLowerCase().replace(/[^a-z]/g,''); }
+function ayerVenta(casaKey){
+  if(!STATE.dolarHist) return null;
+  const target = norm(casaKey);
+  const matchKey = Object.keys(STATE.dolarHist).find(k=>{
+    const nk = norm(k); return nk===target || nk.includes(target) || target.includes(nk);
+  });
+  if(!matchKey) return null;
+  const arr = STATE.dolarHist[matchKey];
+  if(!arr || !arr.length) return null;
+  return arr[arr.length-1].venta;
 }
 async function loadRiesgo(){
   const res = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
@@ -241,12 +273,22 @@ async function loadFeriados(){
   STATE.feriados = await res.json(); return STATE.feriados;
 }
 
+function dolarTile(k, casaKey, obj){
+  const ayer = ayerVenta(casaKey);
+  let sub = 'venta', st = 'st-amber';
+  if(ayer!==null && ayer>0){
+    const delta = obj.venta - ayer;
+    st = delta>0.5?'st-red':delta<-0.5?'st-green':'st-amber';
+    sub = Math.abs(delta)<0.5 ? 'sin cambios vs. ayer' : `${arrow(delta)} ${delta>0?'subió':'bajó'} $${fmt(Math.abs(delta),0)} vs. ayer`;
+  }
+  return {k, v:'$'+fmt(obj.venta), st, sub};
+}
 function renderKPIs(){
   const tiles = []; const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
-  if(byCasa.oficial) tiles.push({k:'Dólar oficial', v:'$'+fmt(byCasa.oficial.venta), st:'st-amber', sub:'venta'});
-  if(byCasa.blue) tiles.push({k:'Dólar blue', v:'$'+fmt(byCasa.blue.venta), st:'st-amber', sub:'venta'});
-  if(byCasa.bolsa) tiles.push({k:'Dólar MEP', v:'$'+fmt(byCasa.bolsa.venta), st:'st-amber', sub:'venta'});
-  if(byCasa.contadoconliqui) tiles.push({k:'Dólar CCL', v:'$'+fmt(byCasa.contadoconliqui.venta), st:'st-amber', sub:'venta'});
+  if(byCasa.oficial) tiles.push(dolarTile('Dólar oficial','oficial',byCasa.oficial));
+  if(byCasa.blue) tiles.push(dolarTile('Dólar blue','blue',byCasa.blue));
+  if(byCasa.bolsa) tiles.push(dolarTile('Dólar MEP','bolsa',byCasa.bolsa));
+  if(byCasa.contadoconliqui) tiles.push(dolarTile('Dólar CCL','contadoconliqui',byCasa.contadoconliqui));
   if(byCasa.oficial && byCasa.blue){
     const brecha = ((byCasa.blue.venta - byCasa.oficial.venta)/byCasa.oficial.venta)*100;
     tiles.push({k:'Brecha blue/oficial', v:fmt(brecha,1)+'%', st: brecha>30?'st-red':brecha>10?'st-amber':'st-green', sub:'oficial vs. blue'});
@@ -265,7 +307,36 @@ function renderKPIs(){
     const last = STATE.inflInteranual[STATE.inflInteranual.length-1];
     tiles.push({k:'IPC interanual', v:fmt(last.valor,1)+'%', st:'st-amber', sub:fmtDate(last.fecha)});
   }
-  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v">${t.v}</span></div><div class="sub">${t.sub||''}</div></div>`).join('');
+  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div></div>`).join('');
+}
+
+function renderResumen(){
+  const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
+  const parts = [];
+  if(byCasa.blue){
+    const ayer = ayerVenta('blue');
+    if(ayer!==null && Math.abs(byCasa.blue.venta-ayer)>=0.5){
+      const delta = byCasa.blue.venta - ayer;
+      parts.push(`el dólar blue ${delta>0?'subió 🔺':'bajó 🔻'} $${fmt(Math.abs(delta),0)} respecto a ayer`);
+    } else {
+      parts.push('el dólar blue está prácticamente sin cambios respecto a ayer');
+    }
+  }
+  if(STATE.riesgo && STATE.riesgoHist && STATE.riesgoHist.length>1){
+    const prev = STATE.riesgoHist[STATE.riesgoHist.length-2].valor;
+    const delta = STATE.riesgo.valor - prev;
+    if(Math.abs(delta)>=3){
+      parts.push(`el riesgo país ${delta>0?'empeoró':'mejoró'} ${delta>0?'📈':'📉'} (${fmt(Math.abs(delta),0)} pb)`);
+    } else {
+      parts.push('el riesgo país se mantiene estable');
+    }
+  }
+  if(!parts.length){ $('resumenPanel').style.display='none'; return; }
+  const joined = parts.length>1 ? parts.slice(0,-1).join(', ') + ' y ' + parts[parts.length-1] : parts[0];
+  const mixed = parts.length>1 && ((joined.includes('subió')||joined.includes('empeoró')) && (joined.includes('bajó')||joined.includes('mejoró')));
+  const lead = mixed ? 'Panorama mixto hoy:' : (joined.includes('subió')||joined.includes('empeoró')) ? 'Día para estar atento:' : 'Buenas noticias hoy:';
+  $('resumenPanel').style.display='block';
+  $('resumenBox').innerHTML = `<b>${lead}</b> hoy ${joined}.`;
 }
 
 function renderSemaforo(){
@@ -283,7 +354,7 @@ function renderRiesgo(){
   const prev = hist.length>1? hist[hist.length-2].valor : null;
   const delta = prev!==null? STATE.riesgo.valor-prev : null; const st = statusClass(delta);
   $('riesgoSub').textContent = fmtDate(STATE.riesgo.fecha);
-  $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
+  $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v mono">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta mono">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
     <div class="chart-card">${sparkline(values)}</div>
     <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>`;
 }
@@ -418,7 +489,7 @@ async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
   const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
-  renderKPIs(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario();
+  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
 }
 loadAll();
