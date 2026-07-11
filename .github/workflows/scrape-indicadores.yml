@@ -1,0 +1,35 @@
+name: Scrapear indicadores económicos
+
+on:
+  schedule:
+    # 09:15 hora Argentina = 12:15 UTC (Argentina no tiene horario de verano)
+    - cron: '15 12 * * *'
+  workflow_dispatch: {}   # también podés tocar "Run workflow" a mano en GitHub
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Instalar Chromium para Puppeteer
+        run: npx puppeteer browsers install chrome
+
+      - name: Leer Reservas del BCRA
+        run: npm run reservas
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Leer IPC del INDEC
+        run: npm run ipc
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
