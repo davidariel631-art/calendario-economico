@@ -42,17 +42,15 @@ export async function scrapeReservas() {
   
   let historia = [];
   
-  // Extraemos el array de datos buscando tanto en 'detalle' (API v4) como en 'results'
-  if (data && typeof data === 'object') {
-    if (Array.isArray(data.detalle)) historia = data.detalle;
-    else if (Array.isArray(data.Detalle)) historia = data.Detalle;
-    else if (Array.isArray(data.results)) historia = data.results;
-    else if (Array.isArray(data)) {
+  // Extracción ultra-precisa analizando la envoltura de la API
+  if (Array.isArray(data)) {
+    if (data.length > 0 && (data[0].detalle || data[0].Detalle || data[0].results)) {
+      historia = data[0].detalle || data[0].Detalle || data[0].results;
+    } else {
       historia = data;
-    } else if (data.length > 0 && data[0]) {
-      const primerItem = data[0];
-      historia = primerItem.detalle || primerItem.results || [];
     }
+  } else if (data && typeof data === 'object') {
+    historia = data.detalle || data.Detalle || data.results || [];
   }
   
   if (!historia || !historia.length) {
@@ -60,20 +58,19 @@ export async function scrapeReservas() {
     throw new Error('La API del BCRA respondió sin un listado de datos reconocible (detalle/results).');
   }
 
-  // ¡Inteligencia de Orden! La API a veces manda lo más nuevo al principio y otras al final.
-  // Evaluamos las fechas del primero y del último para asegurar cuál es el más reciente.
+  // Evaluamos las fechas del primero y del último para asegurar cuál es el más reciente de la lista
   let ultimo = historia[0]; 
   if (historia.length > 1) {
     const fechaPrimero = historia[0].fecha || historia[0].Fecha || '';
     const fechaUltimo = historia[historia.length - 1].fecha || historia[historia.length - 1].Fecha || '';
     
-    // Si la fecha del último elemento es mayor, significa que está ordenado cronológicamente tradicional
+    // Si la fecha del último elemento es más nueva, se queda con el último, sino con el primero
     if (fechaUltimo > fechaPrimero) {
       ultimo = historia[historia.length - 1];
     }
   }
   
-  // Mapeo adaptativo de campos por si cambian mayúsculas/minúsculas
+  // Mapeo adaptativo de campos (fecha o Fecha, valor o Valor)
   const fechaEfectiva = ultimo.fecha || ultimo.Fecha;
   const valorEfectivo = ultimo.valor !== undefined ? ultimo.valor : ultimo.Valor;
 
