@@ -15,7 +15,7 @@ async function fetchReservas() {
     const isCertError = /certificate|SSL|TLS/i.test(err.message || '');
     if (!isCertError) throw err;
 
-    console.warn('⚠️ Falló por certificado SSL, reintentando con verificación relajada...');
+    console.warn('⚠️ Falló por certificado SSL, reintentando...');
     const insecureAgent = new Agent({ connect: { rejectUnauthorized: false } });
     const res2 = await undiciFetch(BCRA_URL, { dispatcher: insecureAgent });
     if (!res2.ok) throw new Error(`BCRA respondió ${res2.status} (reintento)`);
@@ -26,48 +26,37 @@ async function fetchReservas() {
 export async function scrapeReservas() {
   const data = await fetchReservas();
   
-  let historia = [];
-  
-  // Forzamos al script a meterse adentro de "detalle" ignore lo de afuera
-  if (Array.isArray(data)) {
-    if (data.length > 0 && (data[0].detalle || data[0].Detalle || data[0].results)) {
-      historia = data[0].detalle || data[0].Detalle || data[0].results;
-    } else {
-      historia = data;
-    }
-  } else if (data && typeof data === 'object') {
-    historia = data.detalle || data.Detalle || data.results || [];
-  }
-  
-  if (!historia || !historia.length) {
-    console.log('Respuesta cruda de la API del BCRA:', JSON.stringify(data, null, 2));
-    throw new Error('La API del BCRA respondió sin un listado de datos reconocible (detalle/results).');
+  let historia = null;
+
+  // Extracción directa sin importar cómo venga envuelto el objeto del BCRA
+  if (Array.isArray(data) && data[0] && data[0].detalle) {
+    historia = data[0].detalle;
+  } else if (data && data.detalle) {
+    historia = data.detalle;
+  } else if (Array.isArray(data)) {
+    historia = data;
   }
 
-  // Buscamos el elemento con la fecha más nueva
-  let ultimo = historia[0]; 
-  if (historia.length > 1) {
-    const fechaPrimero = historia[0].fecha || historia[0].Fecha || '';
-    const fechaUltimo = historia[historia.length - 1].fecha || historia[historia.length - 1].Fecha || '';
-    
-    if (fechaUltimo > fechaPrimero) {
-      ultimo = historia[historia.length - 1];
-    }
+  if (!historia || !Array.isArray(historia) || historia.length === 0) {
+    console.log('Estructura inesperada de la API:', JSON.stringify(data).substring(0, 500));
+    throw new Error('No se pudo encontrar la lista de datos en la respuesta del BCRA.');
   }
-  
+
+  // El primer elemento contiene la fecha más reciente ('2026-07-06')
+  const ultimo = historia[0];
   const fechaEfectiva = ultimo.fecha || ultimo.Fecha;
   const valorEfectivo = ultimo.valor !== undefined ? ultimo.valor : ultimo.Valor;
 
   if (!fechaEfectiva || valorEfectivo === undefined || valorEfectivo === null) {
-    console.log('Contenido del registro seleccionado:', ultimo);
-    throw new Error('La fecha o el valor del registro elegido vinieron vacíos.');
+    console.log('Registro seleccionado inválido:', ultimo);
+    throw new Error('La fecha o el valor vinieron vacíos.');
   }
 
   const registro = {
     idVariable: ID_VARIABLE_RESERVAS,
     descripcion: 'Reservas Internacionales del BCRA',
     fecha: fechaEfectiva,
-    valorMillonesUSD: valorEfectivo,
+    valorMillonesUSD: Number(valorEfectivo),
     unidad: 'Millones de USD',
     fuente: 'api.bcra.gob.ar (API oficial Principales Variables v4.0)',
     scrapedAt: new Date().toISOString(),
@@ -76,16 +65,8 @@ export async function scrapeReservas() {
   console.log('✅ Reservas BCRA encontradas con éxito:', registro);
 
   const db = getDb();
-  
-  await db.collection('indicadores').doc('reservas_bcra').set({
-    ultimo: registro,
-  }, { merge: true });
-
-  await db.collection('indicadores')
-    .doc('reservas_bcra')
-    .collection('historico')
-    .doc(registro.fecha)
-    .set(registro, { merge: true });
+  await db.collection('indicadores').doc('reservas_bcra').set({ ultimo: registro }, { merge: true });
+  await db.collection('indicadores').doc('reservas_bcra').collection('historico').doc(registro.fecha).set(registro, { merge: true });
 
   console.log('💾 ✅ Guardado impecable en Firestore: indicadores/reservas_bcra');
   return registro;
