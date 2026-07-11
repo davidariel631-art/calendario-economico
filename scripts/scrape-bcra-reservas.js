@@ -40,37 +40,55 @@ async function fetchReservas() {
 
 export async function scrapeReservas() {
   const data = await fetchReservas();
-  const results = data?.results || [];
+  
+  // Soporta si la API devuelve los datos en "results" o directamente en un array
+  const results = data?.results || (Array.isArray(data) ? data : []);
+  
   if (!results.length) {
+    console.log('Respuesta cruda de la API del BCRA:', JSON.stringify(data, null, 2));
     throw new Error('La API del BCRA respondió sin resultados para idVariable=1');
   }
 
-  // La API devuelve el histórico de esa variable; el último elemento es el más reciente.
+  // El último elemento es el más reciente
   const ultimo = results[results.length - 1];
+  
+  // Blindaje contra cambios de mayúsculas/minúsculas en las llaves de la API (fecha o Fecha, valor o Valor)
+  const fechaEfectiva = ultimo.fecha || ultimo.Fecha;
+  const valorEfectivo = ultimo.valor !== undefined ? ultimo.valor : ultimo.Valor;
+
+  // Validación crítica para que Firebase nunca reciba un "undefined" y se rompa
+  if (!fechaEfectiva || valorEfectivo === undefined || valorEfectivo === null) {
+    console.log('Contenido del último registro recibido del BCRA:', ultimo);
+    throw new Error('La fecha o el valor de la API del BCRA vinieron vacíos o con nombres de campos irreconocibles.');
+  }
+
   const registro = {
     idVariable: ID_VARIABLE_RESERVAS,
     descripcion: 'Reservas Internacionales del BCRA',
-    fecha: ultimo.fecha,               // YYYY-MM-DD
-    valorMillonesUSD: ultimo.valor,
+    fecha: fechaEfectiva,               // YYYY-MM-DD
+    valorMillonesUSD: valorEfectivo,
     unidad: 'Millones de USD',
     fuente: 'api.bcra.gob.ar (API oficial Principales Variables v4.0)',
     scrapedAt: new Date().toISOString(),
   };
 
-  console.log('✅ Reservas BCRA:', registro);
+  console.log('✅ Reservas BCRA encontradas:', registro);
 
   const db = getDb();
+  
+  // Guardar el último dato disponible
   await db.collection('indicadores').doc('reservas_bcra').set({
     ultimo: registro,
   }, { merge: true });
 
+  // Guardar en el histórico usando la fecha como ID del documento
   await db.collection('indicadores')
     .doc('reservas_bcra')
     .collection('historico')
     .doc(registro.fecha)
     .set(registro, { merge: true });
 
-  console.log('✅ Guardado en Firestore: indicadores/reservas_bcra');
+  console.log('💾 ✅ Guardado con éxito en Firestore: indicadores/reservas_bcra');
   return registro;
 }
 
