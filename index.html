@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#10161a; --bg-2:#151d21; --panel:#1a2327; --panel-2:#1e292d; --line:#2a373b;
@@ -274,6 +276,59 @@ function sparkline(values, w=260, h=46, colorPos='var(--red)', colorNeg='var(--g
 let STATE = {};
 const CASA_LABELS = { oficial:'Oficial', blue:'Blue', bolsa:'MEP', contadoconliqui:'CCL', mayorista:'Mayorista', cripto:'Cripto', tarjeta:'Tarjeta' };
 
+// Mismo proyecto de Firebase donde el scraper (BCRA/INDEC) y el panel de
+// carga manual guardan los indicadores. Esto es SOLO LECTURA — para que
+// funcione, las reglas de Firestore tienen que permitir "allow read: if true"
+// en la colección "indicadores" (ver README del scraper).
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+let fsDb = null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  fsDb = firebase.firestore();
+}catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+
+// Claves de Firestore que alimentan cada tarjeta del calendario.
+// "ipc" no está acá: el IPC ya viene de ArgentinaDatos (loadInflacion).
+const FIRESTORE_KEY_MAP = {
+  reservas: 'reservas_bcra',        // lo escribe tu scraper (API oficial BCRA)
+  recaudacion: 'recaudacion',       // carga manual
+  emae: 'emae',                     // carga manual
+  fiscal: 'resultado_fiscal',       // carga manual
+  cambiario: 'cambiario',           // carga manual
+  rem: 'rem_ipc_esperado',          // carga manual (también alimenta "Esperado" del IPC)
+};
+
+async function loadIndicadoresFirestore(){
+  if(!fsDb) return {};
+  const out = {};
+  await Promise.all(Object.values(FIRESTORE_KEY_MAP).map(async fsKey=>{
+    try{
+      const doc = await fsDb.collection('indicadores').doc(fsKey).get();
+      if(doc.exists) out[fsKey] = doc.data().ultimo || null;
+    }catch(e){ console.warn('Firestore: no se pudo leer', fsKey, e.message); }
+  }));
+  STATE.firestore = out;
+  return out;
+}
+
+// Normaliza cualquiera de los dos "esquemas" que existen hoy:
+// - el que escribe el scraper (valorMillonesUSD / valorPorcentaje)
+// - el que escribe la carga manual (valor + unidad)
+function extractValorUnidad(doc){
+  if(!doc) return null;
+  if(typeof doc.valor === 'number') return {valor: doc.valor, unidad: doc.unidad || '', fecha: doc.fecha};
+  if(typeof doc.valorMillonesUSD === 'number') return {valor: doc.valorMillonesUSD, unidad: 'M USD', fecha: doc.fecha};
+  if(typeof doc.valorPorcentaje === 'number') return {valor: doc.valorPorcentaje, unidad: '%', fecha: doc.fecha};
+  return null;
+}
+
 async function loadDolares(){
   const res = await fetch('https://dolarapi.com/v1/dolares');
   if(!res.ok) throw new Error('dolarapi '+res.status);
@@ -484,26 +539,10 @@ function buildScheduleForMonth(year, monthIdx){
   ].filter(i=> i.date.getFullYear()===year && i.date.getMonth()===monthIdx);
 }
 
-// Intento best-effort de traer el REM (pronóstico de inflación de mercado).
-// No hay un endpoint de ArgentinaDatos confirmado para esto todavía — si
-// falla o no existe, seguimos sin romper nada y mostramos "s/d".
-async function loadREM(){
-  try{
-    const res = await fetch('https://api.argentinadatos.com/v1/finanzas/rem/ultimo');
-    if(!res.ok) return null;
-    const d = await res.json();
-    STATE.remUltimo = d;
-    return d;
-  }catch(e){ return null; }
-}
-
 function remInflacionEsperada(){
-  // Forma esperada (sin confirmar): { inflacion_mensual_esperada: X, ... }
-  // Se ajusta el día que confirmemos el schema real del endpoint.
-  const d = STATE.remUltimo;
-  if(!d) return null;
-  const v = d.inflacion_mensual_esperada ?? d.inflacionMensual ?? null;
-  return typeof v === 'number' ? v : null;
+  const doc = STATE.firestore?.rem_ipc_esperado;
+  const v = extractValorUnidad(doc);
+  return v ? v.valor : null;
 }
 
 function ipcCardData(){
@@ -514,12 +553,7 @@ function ipcCardData(){
 }
 
 // Resuelve Anterior / Esperado / Actual para cualquier tarjeta del calendario.
-// Solo IPC tiene datos reales conectados hoy; el resto queda honestamente
-// en "s/d" / "Pendiente" hasta que conectemos Firestore (scraper de BCRA/INDEC).
 function resolveColumns(key, eventDate){
-  const today = new Date(); today.setHours(0,0,0,0);
-  const alreadyPublished = eventDate <= today;
-
   if(key === 'ipc'){
     const d = ipcCardData();
     const esperado = remInflacionEsperada();
@@ -537,12 +571,26 @@ function resolveColumns(key, eventDate){
     };
   }
 
-  // Resto de indicadores: todavía sin fuente conectada al panel (ver README del scraper).
+  // Resto de indicadores: vienen del scraper (Reservas) o de carga manual
+  // (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM).
+  const fsKey = FIRESTORE_KEY_MAP[key];
+  const doc = STATE.firestore?.[fsKey];
+  const v = extractValorUnidad(doc);
+
+  if(!v){
+    return { anterior:'s/d', esperado:'s/d', actual:null, actualPending:true, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
+  }
+
+  const decimales = v.unidad === '%' ? 1 : 0;
   return {
-    anterior: 's/d', esperado: 's/d', actual: null,
-    actualPending: true,
-    compareBase: null, compareLabel: '',
-    actualRaw: null, historial: [],
+    anterior: 's/d', // se puede mejorar leyendo el historico/ de Firestore
+    esperado: 's/d',
+    actual: `${fmt(v.valor, decimales)} ${v.unidad}`.trim(),
+    actualPending: false,
+    compareBase: null,
+    compareLabel: '',
+    actualRaw: v.valor,
+    historial: [{label: v.fecha ? fmtDate(v.fecha+(v.fecha.length===7?'-01':'')) : '—', value: `${fmt(v.valor, decimales)} ${v.unidad}`.trim()}],
   };
 }
 
@@ -634,7 +682,7 @@ function toggleCard(el){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadREM(), loadUVA()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
