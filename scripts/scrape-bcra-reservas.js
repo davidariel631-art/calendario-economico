@@ -28,7 +28,7 @@ export async function scrapeReservas() {
   
   let historia = [];
   
-  // Nos metemos directo adentro de "detalle" para ignorar el envoltorio de la API
+  // Forzamos al script a meterse adentro de "detalle" ignore lo de afuera
   if (Array.isArray(data)) {
     if (data.length > 0 && (data[0].detalle || data[0].Detalle || data[0].results)) {
       historia = data[0].detalle || data[0].Detalle || data[0].results;
@@ -44,7 +44,7 @@ export async function scrapeReservas() {
     throw new Error('La API del BCRA respondió sin un listado de datos reconocible (detalle/results).');
   }
 
-  // Evaluamos las fechas del primero y del último para asegurar cuál es el más reciente
+  // Buscamos el elemento con la fecha más nueva
   let ultimo = historia[0]; 
   if (historia.length > 1) {
     const fechaPrimero = historia[0].fecha || historia[0].Fecha || '';
