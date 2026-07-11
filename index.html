@@ -92,17 +92,17 @@
   .ecard.expanded .expand-hint{display:none;}
 
   /* ---------- 3-COLUMN VALUE GRID ---------- */
-  .cols3{display:grid; grid-template-columns:1fr 1fr 1fr; margin-top:10px; padding-top:10px; border-top:1px solid var(--line);}
-  .cols3 .col{text-align:center; padding:0 4px; border-right:1px solid var(--line);}
+  .cols3{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); margin-top:10px; padding-top:10px; border-top:1px solid var(--line);}
+  .cols3 .col{text-align:center; padding:0 4px; border-right:1px solid var(--line); min-width:0; overflow:hidden;}
   .cols3 .col:last-child{border-right:none;}
-  .cols3 .col .clbl{font-size:8px; color:var(--dim); text-transform:uppercase; letter-spacing:.07em; white-space:nowrap;}
-  .cols3 .col .cval{font-size:15px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;}
+  .cols3 .col .clbl{font-size:8px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; line-height:1.25; overflow-wrap:break-word;}
+  .cols3 .col .cval{font-size:15px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; overflow-wrap:break-word;}
   .cols3 .col .cval.good{color:var(--green);}
   .cols3 .col .cval.bad{color:var(--red);}
   .cols3 .col .cval.neutral{color:var(--dim); font-size:12px; font-weight:600;}
   .pending{
-    display:inline-block; padding:2px 7px; border-radius:5px; background:#242e31; color:var(--dim);
-    font-size:10px; font-weight:700; animation:blinkPending 1.7s ease-in-out infinite;
+    display:inline-block; padding:2px 6px; border-radius:5px; background:#242e31; color:var(--dim);
+    font-size:9.5px; font-weight:700; animation:blinkPending 1.7s ease-in-out infinite; max-width:100%; overflow-wrap:break-word;
   }
   @keyframes blinkPending{0%,100%{opacity:1}50%{opacity:.32}}
   .deviation{font-size:8.5px; margin-top:3px; font-weight:700; letter-spacing:.02em;}
@@ -156,6 +156,36 @@
   .loading{color:var(--dim); font-size:11px; padding:14px 0; text-align:center;}
   footer{margin-top:6px; padding-top:10px; border-top:1px solid var(--line); font-size:9.5px; color:var(--dim); line-height:1.6;}
   footer b{color:var(--chalk);}
+
+  /* ---------- MOBILE ---------- */
+  @media (max-width:640px){
+    body{padding:10px; font-size:13px;}
+    header{gap:6px;}
+    .brand h1{font-size:18px;}
+    .brand .eyebrow{font-size:9px; letter-spacing:.14em;}
+    .clockbox{font-size:9.5px; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
+    .clockbox .time{font-size:15px;}
+    .refresh-btn{padding:4px 8px; font-size:9.5px;}
+
+    .kpi-grid{grid-template-columns:repeat(2, 1fr); gap:7px;}
+    .kpi{padding:8px 9px;}
+    .kpi .v{font-size:16px;}
+
+    /* Tarjetas del calendario: una por fila para que las 3 columnas respiren */
+    .card-grid{grid-template-columns:1fr;}
+    .ecard{padding:12px;}
+    .ecard .emoji{font-size:28px;}
+    .ecard .question{font-size:13px;}
+    .ecard.expanded{grid-column:auto;}
+
+    .cols3 .col .clbl{font-size:7.5px;}
+    .cols3 .col .cval{font-size:14px;}
+    .pending{font-size:9px; padding:2px 5px;}
+    .deviation{font-size:8px;}
+
+    .impacto-box{padding:10px 11px;}
+    .impacto-box .criollo{font-size:12px;}
+  }
 </style>
 </head>
 <body>
@@ -295,6 +325,16 @@ async function loadFeriados(){
   STATE.feriados = await res.json(); return STATE.feriados;
 }
 
+// UVA: unidad que ajusta créditos hipotecarios UVA y muchos contratos de
+// alquiler. Endpoint oficial confirmado de ArgentinaDatos.
+async function loadUVA(){
+  const res = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/uva');
+  if(!res.ok) throw new Error('uva '+res.status);
+  const data = await res.json();
+  STATE.uva = [...data].sort((a,b)=> a.fecha.localeCompare(b.fecha));
+  return STATE.uva;
+}
+
 function dolarTile(k, casaKey, obj){
   const ayer = ayerVenta(casaKey);
   let sub = 'venta', st = 'st-amber';
@@ -328,6 +368,10 @@ function renderKPIs(){
   if(STATE.inflInteranual && STATE.inflInteranual.length){
     const last = STATE.inflInteranual[STATE.inflInteranual.length-1];
     tiles.push({k:'IPC interanual', v:fmt(last.valor,1)+'%', st:'st-amber', sub:fmtDate(last.fecha)});
+  }
+  if(STATE.uva && STATE.uva.length){
+    const last = STATE.uva[STATE.uva.length-1];
+    tiles.push({k:'UVA', v:'$'+fmt(last.valor,2), st:'', sub:'créditos y alquileres UVA · '+fmtDate(last.fecha)});
   }
   $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div></div>`).join('');
 }
@@ -590,7 +634,7 @@ function toggleCard(el){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadREM()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadREM(), loadUVA()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
