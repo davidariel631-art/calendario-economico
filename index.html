@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Economía Argentina — Panel en vivo</title>
+<style>
+  :root{
+    --bg:#10161a;
+    --bg-2:#151d21;
+    --panel:#1a2327;
+    --panel-2:#1e292d;
+    --line:#2a373b;
+    --chalk:#eef0ee;
+    --dim:#8fa19f;
+    --amber:#ffb238;
+    --green:#39d98a;
+    --green-bg:#123326;
+    --red:#ff6161;
+    --red-bg:#3a1a1a;
+    --amber-bg:#3a2a10;
+    --celeste:#7cc0ea;
+    --celeste-bg:#122a35;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse at 15% -10%, #182124 0%, transparent 55%),
+      radial-gradient(ellipse at 100% 0%, #17201f 0%, transparent 50%),
+      var(--bg);
+    color:var(--chalk);
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    min-height:100vh;
+    padding:16px;
+    font-size:14px;
+  }
+  .wrap{max-width:1240px;margin:0 auto;}
+
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px;
+  }
+  .brand{display:flex; align-items:baseline; gap:10px;}
+  .brand h1{
+    margin:0; font-size:22px; letter-spacing:.03em; font-weight:800;
+    font-family: Georgia, "Times New Roman", serif; color:var(--chalk);
+  }
+  .brand h1 span{color:var(--amber);}
+  .brand .eyebrow{font-size:10.5px; letter-spacing:.2em; color:var(--celeste); text-transform:uppercase;}
+  .clockbox{text-align:right; font-size:11px; color:var(--dim); display:flex; align-items:center; gap:10px;}
+  .clockbox .time{font-size:18px; color:var(--amber); font-weight:700;}
+  .dot-live{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green); animation:pulse 1.6s infinite; display:inline-block; margin-right:5px;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .refresh-btn{
+    background:var(--celeste-bg); color:var(--celeste); border:1px solid var(--celeste);
+    font-family:inherit; font-size:10.5px; padding:5px 10px; border-radius:5px; cursor:pointer;
+    letter-spacing:.05em; text-transform:uppercase; font-weight:700;
+  }
+  .refresh-btn:hover{background:var(--celeste); color:#0e1a20;}
+
+  /* ---------- KPI STRIP ---------- */
+  .kpi-grid{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:9px; margin-bottom:14px;
+  }
+  .kpi{
+    background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--dim);
+    border-radius:7px; padding:9px 11px; position:relative; overflow:hidden;
+  }
+  .kpi.st-green{border-left-color:var(--green); background:linear-gradient(180deg, var(--green-bg) 0%, var(--panel) 55%);}
+  .kpi.st-red{border-left-color:var(--red); background:linear-gradient(180deg, var(--red-bg) 0%, var(--panel) 55%);}
+  .kpi.st-amber{border-left-color:var(--amber); background:linear-gradient(180deg, var(--amber-bg) 0%, var(--panel) 55%);}
+  .kpi .k{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);}
+  .kpi .v-row{display:flex; align-items:baseline; gap:6px; margin-top:3px;}
+  .kpi .v{font-size:19px; font-weight:800;}
+  .kpi.st-green .v{color:var(--green);} .kpi.st-red .v{color:var(--red);} .kpi.st-amber .v{color:var(--amber);}
+  .kpi .delta{font-size:10px; font-weight:700;}
+  .kpi.st-green .delta{color:var(--green);} .kpi.st-red .delta{color:var(--red);} .kpi.st-amber .delta{color:var(--amber);}
+  .kpi .sub{font-size:9.5px; color:var(--dim); margin-top:2px;}
+
+  /* ---------- GRID ---------- */
+  .grid{display:grid; grid-template-columns:1.5fr 1fr; gap:12px;}
+  @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:13px 15px; margin-bottom:12px;}
+  .panel h2{margin:0 0 8px 0; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--celeste); display:flex; align-items:center; justify-content:space-between;}
+  .panel h2 small{color:var(--dim); font-weight:400; letter-spacing:0; text-transform:none; font-size:10px;}
+
+  /* ---------- CALENDAR (compact) ---------- */
+  .cal-day-head{display:flex; align-items:center; gap:7px; margin:10px 0 4px 0; padding-bottom:3px; border-bottom:1px solid var(--line);}
+  .cal-day-head:first-child{margin-top:0;}
+  .cal-day-head .d{font-size:14px; font-weight:800; color:var(--chalk); font-family:Georgia,serif; min-width:20px;}
+  .cal-day-head .dow{font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;}
+  .badge{font-size:8.5px; padding:1px 6px; border-radius:3px; font-weight:800; letter-spacing:.05em;}
+  .badge.today{background:var(--amber); color:#1a1206;}
+  .badge.holiday{background:var(--red-bg); color:#ffb3b3; border:1px solid var(--red);}
+
+  .event{display:flex; gap:8px; padding:4px 2px; align-items:flex-start;}
+  .imp{width:7px;height:7px;border-radius:50%; margin-top:5px; flex:none; box-shadow:0 0 5px currentColor;}
+  .imp.hi{background:var(--red); color:var(--red);}
+  .imp.mid{background:var(--amber); color:var(--amber);}
+  .imp.lo{background:var(--dim); color:var(--dim);}
+  .event .line1{font-size:12.5px; color:var(--chalk);}
+  .event .line1 b{color:var(--celeste); font-weight:700;}
+  .event .note{font-size:10.5px; color:var(--dim);}
+  .event .val{font-size:10.5px; color:var(--green); font-weight:700;}
+
+  .legend{display:flex; gap:14px; font-size:9.5px; color:var(--dim); margin-top:10px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:8px;}
+  .legend span{display:flex; align-items:center; gap:4px;}
+  .legend i{width:7px;height:7px;border-radius:50%;display:inline-block;}
+
+  /* ---------- SEMAFORO ---------- */
+  .semaforo{display:flex; align-items:center; gap:12px;}
+  .semaforo .ring{width:56px; height:56px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; text-align:center;}
+  .semaforo .txt b{display:block; font-size:14px;}
+  .semaforo .txt span{font-size:10.5px; color:var(--dim);}
+
+  /* ---------- CHARTS ---------- */
+  .chart-card{margin-top:8px;}
+  .chart-caption{display:flex; justify-content:space-between; font-size:9.5px; color:var(--dim); margin-top:4px;}
+  .bars{display:flex; align-items:flex-end; gap:5px; height:56px; margin-top:6px;}
+  .bar{flex:1; background:var(--celeste); border-radius:3px 3px 0 0; position:relative; min-height:2px;}
+  .bar.neg{background:var(--red);}
+  .bar span{position:absolute; top:-15px; left:0; right:0; text-align:center; font-size:8.5px; color:var(--dim);}
+  .bar-labels{display:flex; gap:5px; margin-top:3px;}
+  .bar-labels div{flex:1; text-align:center; font-size:8.5px; color:var(--dim); text-transform:uppercase;}
+
+  /* ---------- GAUGE (brecha) ---------- */
+  .gauge-donut{width:64px; height:64px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:none;}
+  .gauge-donut .inner{width:44px; height:44px; border-radius:50%; background:var(--panel); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;}
+
+  .feriado-row{display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px dashed var(--line); font-size:11.5px;}
+  .feriado-row:last-child{border-bottom:none;}
+  .feriado-row .fdate{color:var(--celeste); font-weight:700;}
+
+  .loading{color:var(--dim); font-size:11px; padding:14px 0; text-align:center;}
+
+  footer{margin-top:6px; padding-top:10px; border-top:1px solid var(--line); font-size:9.5px; color:var(--dim); line-height:1.6;}
+  footer b{color:var(--chalk);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>ECONOMÍA<span>·ARG</span></h1>
+      <span class="eyebrow">panel en vivo · Buenos Aires</span>
+    </div>
+    <div class="clockbox">
+      <span><span class="dot-live"></span><span id="lastUpdate">conectando…</span></span>
+      <span class="time" id="clock">--:--:--</span>
+      <button class="refresh-btn" onclick="loadAll()">↻ Actualizar</button>
+    </div>
+  </header>
+
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi"><div class="k">cargando</div><div class="v-row"><span class="v">…</span></div></div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div>
+      <div class="panel">
+        <h2>Calendario económico <small>fechas estimadas · patrón histórico INDEC/BCRA</small></h2>
+        <div id="calendar"><div class="loading">Armando agenda…</div></div>
+        <div class="legend">
+          <span><i style="background:var(--red)"></i> Alto impacto</span>
+          <span><i style="background:var(--amber)"></i> Impacto medio</span>
+          <span><i style="background:var(--dim)"></i> Informativo</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="panel">
+        <h2>Semáforo económico</h2>
+        <div id="semaforoBox"><div class="loading">cargando…</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Riesgo país <small id="riesgoSub"></small></h2>
+        <div id="riesgoBox"><div class="loading">cargando…</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Brecha cambiaria</h2>
+        <div id="brechaBox"><div class="loading">cargando…</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2>
+        <div id="inflacionBox"><div class="loading">cargando…</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Próximos feriados</h2>
+        <div id="feriadosBox"><div class="loading">cargando…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Fuentes en vivo: <b>DolarAPI</b> (cotizaciones) · <b>ArgentinaDatos API</b> (riesgo país, IPC INDEC, feriados). Sin API key · se actualiza cada 60s.
+  </footer>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtDate = iso => new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'});
+
+function tickClock(){ $('clock').textContent = new Date().toLocaleTimeString('es-AR',{hour12:false, timeZone:'America/Argentina/Buenos_Aires'}); }
+setInterval(tickClock,1000); tickClock();
+
+function statusClass(delta, threshold=0){
+  if(delta === null || delta === undefined || isNaN(delta)) return '';
+  if(delta > threshold) return 'st-red';
+  if(delta < -threshold) return 'st-green';
+  return 'st-amber';
+}
+function arrow(delta){
+  if(delta===null||delta===undefined||isNaN(delta)||delta===0) return '→';
+  return delta>0 ? '▲' : '▼';
+}
+
+// simple SVG sparkline
+function sparkline(values, w=260, h=46, colorPos='var(--red)', colorNeg='var(--green)'){
+  if(!values.length) return '';
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max-min) || 1;
+  const step = w/(values.length-1 || 1);
+  const pts = values.map((v,i)=> `${i*step},${h - ((v-min)/range)*h}`).join(' ');
+  const trendUp = values[values.length-1] >= values[0];
+  const color = trendUp ? colorPos : colorNeg;
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+let STATE = {};
+
+const CASA_LABELS = { oficial:'Oficial', blue:'Blue', bolsa:'MEP', contadoconliqui:'CCL', mayorista:'Mayorista', cripto:'Cripto', tarjeta:'Tarjeta' };
+
+async function loadDolares(){
+  const res = await fetch('https://dolarapi.com/v1/dolares');
+  if(!res.ok) throw new Error('dolarapi '+res.status);
+  const data = await res.json();
+  STATE.dolares = data;
+  return data;
+}
+
+async function loadRiesgo(){
+  const res = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
+  if(!res.ok) throw new Error('riesgo-pais '+res.status);
+  const d = await res.json();
+  let hist = [];
+  try{
+    const r2 = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais');
+    if(r2.ok) hist = await r2.json();
+  }catch(e){}
+  STATE.riesgo = d; STATE.riesgoHist = hist;
+  return {d, hist};
+}
+
+async function loadInflacion(){
+  const [mRes, iRes] = await Promise.all([
+    fetch('https://api.argentinadatos.com/v1/finanzas/indices/inflacion'),
+    fetch('https://api.argentinadatos.com/v1/finanzas/indices/inflacion-interanual')
+  ]);
+  const mensual = mRes.ok ? await mRes.json() : [];
+  const interanual = iRes.ok ? await iRes.json() : [];
+  STATE.inflMensual = mensual; STATE.inflInteranual = interanual;
+  return {mensual, interanual};
+}
+
+async function loadFeriados(){
+  const year = new Date().getFullYear();
+  const res = await fetch(`https://api.argentinadatos.com/v1/feriados/${year}`);
+  if(!res.ok) throw new Error('feriados '+res.status);
+  const data = await res.json();
+  STATE.feriados = data;
+  return data;
+}
+
+// ---------- RENDER: KPI STRIP ----------
+function renderKPIs(){
+  const tiles = [];
+  const dol = STATE.dolares || [];
+  const byCasa = {}; dol.forEach(d=> byCasa[d.casa]=d);
+
+  if(byCasa.oficial) tiles.push({k:'Dólar oficial', v:'$'+fmt(byCasa.oficial.venta), st:'st-amber', sub:'venta'});
+  if(byCasa.blue) tiles.push({k:'Dólar blue', v:'$'+fmt(byCasa.blue.venta), st:'st-amber', sub:'venta'});
+  if(byCasa.bolsa) tiles.push({k:'Dólar MEP', v:'$'+fmt(byCasa.bolsa.venta), st:'st-amber', sub:'venta'});
+  if(byCasa.contadoconliqui) tiles.push({k:'Dólar CCL', v:'$'+fmt(byCasa.contadoconliqui.venta), st:'st-amber', sub:'venta'});
+
+  if(byCasa.oficial && byCasa.blue){
+    const brecha = ((byCasa.blue.venta - byCasa.oficial.venta)/byCasa.oficial.venta)*100;
+    const st = brecha>30?'st-red':brecha>10?'st-amber':'st-green';
+    tiles.push({k:'Brecha blue/oficial', v:fmt(brecha,1)+'%', st, sub:'oficial vs. blue'});
+  }
+
+  if(STATE.riesgo){
+    const hist = STATE.riesgoHist||[];
+    const prev = hist.length>1 ? hist[hist.length-2].valor : null;
+    const delta = prev!==null ? STATE.riesgo.valor-prev : null;
+    tiles.push({k:'Riesgo país', v:fmt(STATE.riesgo.valor,0)+' pb', st:statusClass(delta), sub: delta!==null? (arrow(delta)+' '+fmt(Math.abs(delta),0)+' pb') : ''});
+  }
+
+  if(STATE.inflMensual && STATE.inflMensual.length){
+    const last = STATE.inflMensual[STATE.inflMensual.length-1];
+    const prev = STATE.inflMensual[STATE.inflMensual.length-2];
+    const delta = prev ? last.valor-prev.valor : null;
+    tiles.push({k:'IPC mensual', v:fmt(last.valor,1)+'%', st:statusClass(delta,0.05), sub: fmtDate(last.fecha)});
+  }
+  if(STATE.inflInteranual && STATE.inflInteranual.length){
+    const last = STATE.inflInteranual[STATE.inflInteranual.length-1];
+    tiles.push({k:'IPC interanual', v:fmt(last.valor,1)+'%', st:'st-amber', sub: fmtDate(last.fecha)});
+  }
+
+  $('kpiGrid').innerHTML = tiles.map(t=>`
+    <div class="kpi ${t.st||''}">
+      <div class="k">${t.k}</div>
+      <div class="v-row"><span class="v">${t.v}</span></div>
+      <div class="sub">${t.sub||''}</div>
+    </div>`).join('');
+}
+
+// ---------- RENDER: SEMAFORO ----------
+function renderSemaforo(){
+  if(!STATE.riesgo) return;
+  const v = STATE.riesgo.valor;
+  let color, label, desc;
+  if(v < 500){ color='var(--green)'; label='Verde'; desc='Riesgo bajo — cerca de grado inversor'; }
+  else if(v < 1200){ color='var(--amber)'; label='Amarillo'; desc='Riesgo moderado, mercado cauteloso'; }
+  else { color='var(--red)'; label='Rojo'; desc='Riesgo alto, fuerte estrés financiero'; }
+  $('semaforoBox').innerHTML = `
+    <div class="semaforo">
+      <div class="ring" style="background:${color}22; border:3px solid ${color}; color:${color};">${fmt(v,0)}<br>pb</div>
+      <div class="txt"><b style="color:${color}">${label}</b><span>${desc}</span></div>
+    </div>`;
+}
+
+// ---------- RENDER: RIESGO PAIS CHART ----------
+function renderRiesgo(){
+  if(!STATE.riesgo) return;
+  const hist = (STATE.riesgoHist||[]).slice(-40);
+  const values = hist.map(h=>h.valor);
+  const prev = hist.length>1 ? hist[hist.length-2].valor : null;
+  const delta = prev!==null ? STATE.riesgo.valor-prev : null;
+  const st = statusClass(delta);
+  $('riesgoSub').textContent = fmtDate(STATE.riesgo.fecha);
+  $('riesgoBox').innerHTML = `
+    <div class="kpi ${st}" style="border-left-width:4px;">
+      <div class="v-row"><span class="v">${fmt(STATE.riesgo.valor,0)} pb</span>
+        <span class="delta">${delta!==null? arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span>
+      </div>
+    </div>
+    <div class="chart-card">${sparkline(values)}</div>
+    <div class="chart-caption"><span>${hist.length? fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>`;
+}
+
+// ---------- RENDER: BRECHA GAUGE ----------
+function renderBrecha(){
+  const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
+  if(!byCasa.oficial || !byCasa.blue){ $('brechaBox').innerHTML = '<div class="loading">sin datos</div>'; return; }
+  const brecha = ((byCasa.blue.venta-byCasa.oficial.venta)/byCasa.oficial.venta)*100;
+  const st = brecha>30?'var(--red)':brecha>10?'var(--amber)':'var(--green)';
+  const pct = Math.min(100, Math.max(0,brecha)); // for the ring, cap visually at 100%
+  const deg = (pct/100)*360;
+  $('brechaBox').innerHTML = `
+    <div class="semaforo">
+      <div class="gauge-donut" style="background:conic-gradient(${st} ${deg}deg, var(--bg-2) ${deg}deg);">
+        <div class="inner" style="color:${st}">${fmt(brecha,1)}%</div>
+      </div>
+      <div class="txt">
+        <b style="color:${st}">$${fmt(byCasa.oficial.venta)} → $${fmt(byCasa.blue.venta)}</b>
+        <span>oficial vs. blue (venta)</span>
+      </div>
+    </div>`;
+}
+
+// ---------- RENDER: INFLACION BAR CHART ----------
+function renderInflacion(){
+  const arr = (STATE.inflMensual||[]).slice(-6);
+  if(!arr.length){ $('inflacionBox').innerHTML='<div class="loading">sin datos</div>'; return; }
+  const max = Math.max(...arr.map(a=>Math.abs(a.valor)), 1);
+  const bars = arr.map(a=>{
+    const h = Math.max(4,(Math.abs(a.valor)/max)*56);
+    return `<div class="bar ${a.valor<0?'neg':''}" style="height:${h}px;"><span>${fmt(a.valor,1)}</span></div>`;
+  }).join('');
+  const labels = arr.map(a=> `<div>${new Date(a.fecha+'T12:00:00').toLocaleDateString('es-AR',{month:'short'})}</div>`).join('');
+  const last = arr[arr.length-1];
+  $('inflSub').textContent = fmtDate(last.fecha);
+  $('inflacionBox').innerHTML = `<div class="bars">${bars}</div><div class="bar-labels">${labels}</div>`;
+}
+
+// ---------- RENDER: FERIADOS ----------
+function renderFeriados(){
+  const data = STATE.feriados||[];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const upcoming = data.filter(f=> new Date(f.fecha+'T12:00:00') >= today).slice(0,5);
+  $('feriadosBox').innerHTML = upcoming.length ? upcoming.map(f=>`
+    <div class="feriado-row"><span>${f.nombre}</span><span class="fdate">${fmtDate(f.fecha)}</span></div>`).join('')
+    : `<div class="sub">No quedan feriados este año.</div>`;
+}
+
+// ---------- CALENDARIO ECONÓMICO (compacto) ----------
+function buildScheduleForMonth(year, monthIdx, lastIPC){
+  const mk = (day, org, title, note, imp, valueHtml) => ({date:new Date(year,monthIdx,day), org, title, note, imp, valueHtml});
+  const items = [
+    mk(4,'BCRA','REM','Expectativas del mercado','mid'),
+    mk(12,'INDEC','IPC','Inflación mensual e interanual','hi', lastIPC ? `${fmt(lastIPC.valor,1)}% mensual (último dato)` : null),
+    mk(18,'BCRA','Balance cambiario','Flujo de divisas del mes','mid'),
+    mk(20,'Hacienda','Resultado fiscal','Cuentas públicas','mid'),
+    mk(21,'INDEC','EMAE','Proxy mensual del PBI','hi'),
+    mk(3,'ARCA','Recaudación','Recaudación impositiva','lo'),
+    mk(25,'BCRA','Reservas','Reservas internacionales','lo'),
+  ];
+  return items.filter(i=> i.date.getFullYear()===year && i.date.getMonth()===monthIdx);
+}
+
+function renderCalendario(){
+  const lastIPC = (STATE.inflMensual||[]).slice(-1)[0];
+  const now = new Date();
+  const nextM = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  const all = [
+    ...buildScheduleForMonth(now.getFullYear(), now.getMonth(), lastIPC),
+    ...buildScheduleForMonth(nextM.getFullYear(), nextM.getMonth(), lastIPC)
+  ].sort((a,b)=>a.date-b.date);
+
+  const feriadoMap = {}; (STATE.feriados||[]).forEach(f=> feriadoMap[f.fecha]=f.nombre);
+  const byDate = {};
+  all.forEach(it=>{ const k=it.date.toISOString().slice(0,10); (byDate[k]=byDate[k]||[]).push(it); });
+
+  const todayKey = new Date().toISOString().slice(0,10);
+  const dow = ['dom','lun','mar','mié','jue','vie','sáb'];
+  let html='';
+  Object.keys(byDate).sort().forEach(key=>{
+    const dateObj = new Date(key+'T12:00:00');
+    const isToday = key===todayKey;
+    const holiday = feriadoMap[key];
+    html += `<div class="cal-day-head">
+      <span class="d">${dateObj.getDate()}</span><span class="dow">${dow[dateObj.getDay()]}</span>
+      ${isToday?'<span class="badge today">HOY</span>':''}
+      ${holiday?`<span class="badge holiday">${holiday}</span>`:''}
+    </div>`;
+    byDate[key].forEach(it=>{
+      html += `<div class="event">
+        <span class="imp ${it.imp}"></span>
+        <div>
+          <div class="line1"><b>${it.org}</b> — ${it.title}</div>
+          <div class="note">${it.note}${it.valueHtml?` · <span class="val">✓ ${it.valueHtml}</span>`:''}</div>
+        </div>
+      </div>`;
+    });
+  });
+  $('calendar').innerHTML = html || '<div class="sub">Sin eventos próximos.</div>';
+}
+
+async function loadAll(){
+  $('lastUpdate').textContent = 'actualizando…';
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados()]);
+  results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
+
+  renderKPIs();
+  renderSemaforo();
+  renderRiesgo();
+  renderBrecha();
+  renderInflacion();
+  renderFeriados();
+  renderCalendario();
+
+  $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
+}
+
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
