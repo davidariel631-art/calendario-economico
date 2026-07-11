@@ -51,17 +51,17 @@
   .grid{display:grid; grid-template-columns:1.5fr 1fr; gap:12px;}
   @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
 
-  .panel{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:13px 15px; margin-bottom:12px; transition:border-color .2s ease;}
-  .panel:hover{border-color:#3a4b50;}
+  .panel{background:linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 260%); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; transition:border-color .2s ease, box-shadow .2s ease; box-shadow:0 6px 18px -12px rgba(0,0,0,.6);}
+  .panel:hover{border-color:#3a4b50; box-shadow:0 10px 24px -12px rgba(0,0,0,.65);}
   .panel h2{margin:0 0 8px 0; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--celeste); display:flex; align-items:center; justify-content:space-between;}
   .panel h2 small{color:var(--dim); font-weight:400; letter-spacing:0; text-transform:none; font-size:10px;}
 
   /* ---------- INTERACTIVE EVENT CARDS ---------- */
   .card-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px;}
   .ecard{
-    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:12px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:13px;
     cursor:pointer; position:relative; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-    grid-column:span 1;
+    grid-column:span 1; box-shadow:0 4px 14px -10px rgba(0,0,0,.55);
   }
   .ecard:hover{transform:translateY(-4px) scale(1.015); box-shadow:0 14px 28px -10px rgba(0,0,0,.6); border-color:var(--celeste);}
   .ecard.expanded{grid-column:1/-1; cursor:default; border-color:var(--amber);}
@@ -91,15 +91,37 @@
   .ecard .expand-hint{font-size:9px; color:var(--dim); margin-top:8px; letter-spacing:.04em;}
   .ecard.expanded .expand-hint{display:none;}
 
-  .expand-body{
-    margin-top:14px; padding-top:12px; border-top:1px dashed var(--line);
-    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px;
+  /* ---------- 3-COLUMN VALUE GRID ---------- */
+  .cols3{display:grid; grid-template-columns:1fr 1fr 1fr; margin-top:10px; padding-top:10px; border-top:1px solid var(--line);}
+  .cols3 .col{text-align:center; padding:0 4px; border-right:1px solid var(--line);}
+  .cols3 .col:last-child{border-right:none;}
+  .cols3 .col .clbl{font-size:8px; color:var(--dim); text-transform:uppercase; letter-spacing:.07em; white-space:nowrap;}
+  .cols3 .col .cval{font-size:15px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;}
+  .cols3 .col .cval.good{color:var(--green);}
+  .cols3 .col .cval.bad{color:var(--red);}
+  .cols3 .col .cval.neutral{color:var(--dim); font-size:12px; font-weight:600;}
+  .pending{
+    display:inline-block; padding:2px 7px; border-radius:5px; background:#242e31; color:var(--dim);
+    font-size:10px; font-weight:700; animation:blinkPending 1.7s ease-in-out infinite;
   }
-  .stat-box{background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px;}
-  .stat-box .lbl{font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;}
-  .stat-box .val{font-size:18px; font-weight:800; margin-top:3px;}
-  .stat-box .val.good{color:var(--green);} .stat-box .val.bad{color:var(--red);} .stat-box .val.neutral{color:var(--dim); font-size:13px; font-weight:600;}
-  .expand-note{grid-column:1/-1; font-size:11.5px; color:var(--dim); line-height:1.5; margin-top:2px;}
+  @keyframes blinkPending{0%,100%{opacity:1}50%{opacity:.32}}
+  .deviation{font-size:8.5px; margin-top:3px; font-weight:700; letter-spacing:.02em;}
+  .deviation.good{color:var(--green);}
+  .deviation.bad{color:var(--red);}
+  .deviation.neutral{color:var(--dim); font-weight:500;}
+
+  /* ---------- IMPACTO EN TU BOLSILLO ---------- */
+  .impacto-box{margin-top:14px; padding:12px 13px; border-radius:9px; background:rgba(255,255,255,0.05); border:1px solid var(--line);}
+  .impacto-box h4{margin:0 0 8px 0; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--celeste); display:flex; align-items:center; gap:5px;}
+  .impacto-box .hist-row{display:flex; justify-content:space-between; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--line);}
+  .impacto-box .hist-row:last-of-type{border-bottom:none;}
+  .impacto-box .hist-row .hv{font-variant-numeric:tabular-nums; font-weight:700; color:var(--chalk);}
+  .impacto-box .criollo{font-size:12.5px; line-height:1.55; margin-top:10px; color:var(--chalk); padding-top:8px; border-top:1px solid var(--line);}
+  .impacto-box .criollo b{color:var(--amber);}
+
+  .expand-body{
+    margin-top:6px;
+  }
   .close-hint{font-size:9.5px; color:var(--celeste); text-align:right; margin-top:8px; cursor:pointer;}
 
   .legend{display:flex; gap:14px; font-size:9.5px; color:var(--dim); margin-top:10px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:8px;}
@@ -388,26 +410,27 @@ function renderFeriados(){
 
 /* ---------------- CALENDARIO: TARJETAS INTERACTIVAS ---------------- */
 const EVENT_DEFS = {
-  rem: {emoji:'📊', question:'¿Qué esperan los analistas del mercado?', tech:'REM · BCRA', imp:'mid',
+  rem: {emoji:'📊', question:'¿Qué esperan los analistas del mercado?', tech:'REM · BCRA', imp:'mid', better:null,
     tip:'Encuesta mensual a bancos y consultoras sobre inflación, dólar y actividad esperada.',
-    note:'El BCRA publica esta encuesta, pero no ofrece una API pública gratuita con los números — se puede consultar el informe completo en su web.'},
-  ipc: {emoji:'🛒', question:'¿Subieron los precios este mes?', tech:'IPC · INDEC', imp:'hi',
-    tip:'Mide cuánto subieron los precios de todo lo que comprás en el mes (inflación).'},
-  cambiario: {emoji:'💱', question:'¿Entraron o salieron más dólares del país?', tech:'Balance cambiario · BCRA', imp:'mid',
+    analysis:'Es el "pronóstico del tiempo" de la economía: sirve para saber qué esperan los analistas antes de que salga el dato real. Es una expectativa, no un hecho — no tomes decisiones grandes solo por esto.'},
+  ipc: {emoji:'🛒', question:'¿Subieron los precios este mes?', tech:'IPC · INDEC', imp:'hi', better:'down',
+    tip:'Mide cuánto subieron los precios de todo lo que comprás en el mes (inflación).',
+    analysis:'Si el IPC da <b>más alto</b> de lo esperado, conviene adelantar compras grandes (electrodomésticos, insumos) antes de que sigan subiendo. Si da <b>más bajo</b>, no hay apuro — podés esperar mejores precios o promociones.'},
+  cambiario: {emoji:'💱', question:'¿Entraron o salieron más dólares del país?', tech:'Balance cambiario · BCRA', imp:'mid', better:'up',
     tip:'Cuenta cuántos dólares entraron (exportaciones) y salieron (importaciones, ahorro) del país.',
-    note:'El BCRA no publica este dato por API pública — se conoce el día de publicación pero no la cifra en tiempo real.'},
-  fiscal: {emoji:'⚖️', question:'¿El gobierno gastó más de lo que recaudó?', tech:'Resultado fiscal · Hacienda', imp:'mid',
+    analysis:'Si entran más dólares de los que salen, el Banco Central tiene más margen para sostener el tipo de cambio. Si salen más de los que entran, suele aumentar la presión sobre el dólar paralelo.'},
+  fiscal: {emoji:'⚖️', question:'¿El gobierno gastó más de lo que recaudó?', tech:'Resultado fiscal · Hacienda', imp:'mid', better:'up',
     tip:'Compara lo que gasta el Estado contra lo que recauda en impuestos ese mes.',
-    note:'Dato oficial de Hacienda sin API pública gratuita — se publica en su web el día estimado.'},
-  emae: {emoji:'🏭', question:'¿La economía creció o se achicó?', tech:'EMAE · INDEC', imp:'hi',
+    analysis:'Un resultado con <b>superávit</b> (recaudó más de lo que gastó) da más previsibilidad al dólar y la inflación a mediano plazo. Un <b>déficit</b> grande históricamente termina presionando para emitir pesos o tomar deuda.'},
+  emae: {emoji:'🏭', question:'¿La economía creció o se achicó?', tech:'EMAE · INDEC', imp:'hi', better:'up',
     tip:'Es el termómetro mensual de la actividad económica: si sube, la economía crece; si baja, se achica.',
-    note:'INDEC no ofrece este dato por API pública gratuita — se publica en su web el día estimado.'},
-  recaudacion: {emoji:'💰', question:'¿Cuánto juntó el Estado en impuestos?', tech:'Recaudación · ARCA', imp:'lo',
+    analysis:'Si la actividad crece, suele haber más consumo, más changas y más demanda de trabajo. Si se achica varios meses seguidos, es momento de ser más conservador con gastos grandes o inversiones.'},
+  recaudacion: {emoji:'💰', question:'¿Cuánto juntó el Estado en impuestos?', tech:'Recaudación · ARCA', imp:'lo', better:null,
     tip:'Es la plata total que recaudó el Estado en impuestos ese mes.',
-    note:'Dato oficial sin API pública gratuita — se publica en la web de ARCA el día estimado.'},
-  reservas: {emoji:'🏦', question:'¿Cuántos dólares tiene el Banco Central?', tech:'Reservas internacionales · BCRA', imp:'lo',
+    analysis:'Una recaudación más alta le da más aire a las cuentas públicas, pero no es automáticamente buena o mala para tu bolsillo — depende de en qué se gasta esa plata.'},
+  reservas: {emoji:'🏦', question:'¿Cuántos dólares tiene el Banco Central?', tech:'Reservas internacionales · BCRA', imp:'lo', better:'up',
     tip:'Es la "caja fuerte" en dólares del Banco Central para responder pagos y sostener la moneda.',
-    note:'El BCRA publica este dato a diario en su web, sin API pública gratuita estable.'},
+    analysis:'Reservas altas y en aumento dan más margen para sostener el dólar oficial. Reservas muy bajas o cayendo suelen anticipar tensión cambiaria — momento de prestar más atención al blue/MEP.'},
 };
 
 function buildScheduleForMonth(year, monthIdx){
@@ -417,11 +440,104 @@ function buildScheduleForMonth(year, monthIdx){
   ].filter(i=> i.date.getFullYear()===year && i.date.getMonth()===monthIdx);
 }
 
+// Intento best-effort de traer el REM (pronóstico de inflación de mercado).
+// No hay un endpoint de ArgentinaDatos confirmado para esto todavía — si
+// falla o no existe, seguimos sin romper nada y mostramos "s/d".
+async function loadREM(){
+  try{
+    const res = await fetch('https://api.argentinadatos.com/v1/finanzas/rem/ultimo');
+    if(!res.ok) return null;
+    const d = await res.json();
+    STATE.remUltimo = d;
+    return d;
+  }catch(e){ return null; }
+}
+
+function remInflacionEsperada(){
+  // Forma esperada (sin confirmar): { inflacion_mensual_esperada: X, ... }
+  // Se ajusta el día que confirmemos el schema real del endpoint.
+  const d = STATE.remUltimo;
+  if(!d) return null;
+  const v = d.inflacion_mensual_esperada ?? d.inflacionMensual ?? null;
+  return typeof v === 'number' ? v : null;
+}
+
 function ipcCardData(){
   const arr = STATE.inflMensual||[];
   if(arr.length<2) return null;
   const real = arr[arr.length-1], anterior = arr[arr.length-2];
   return {realVal:real.valor, anteriorVal:anterior.valor, fecha:real.fecha};
+}
+
+// Resuelve Anterior / Esperado / Actual para cualquier tarjeta del calendario.
+// Solo IPC tiene datos reales conectados hoy; el resto queda honestamente
+// en "s/d" / "Pendiente" hasta que conectemos Firestore (scraper de BCRA/INDEC).
+function resolveColumns(key, eventDate){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const alreadyPublished = eventDate <= today;
+
+  if(key === 'ipc'){
+    const d = ipcCardData();
+    const esperado = remInflacionEsperada();
+    return {
+      anterior: d ? fmt(d.anteriorVal,1)+'%' : 's/d',
+      esperado: esperado!==null ? fmt(esperado,1)+'%' : 's/d',
+      actual: d ? fmt(d.realVal,1)+'%' : null,
+      actualPending: !d,
+      compareBase: esperado!==null ? esperado : (d ? d.anteriorVal : null),
+      compareLabel: esperado!==null ? 'vs. esperado (REM)' : 'vs. mes anterior',
+      actualRaw: d ? d.realVal : null,
+      historial: d ? [
+        {label: fmtDate(d.fecha), value: fmt(d.realVal,1)+'%'},
+      ] : [],
+    };
+  }
+
+  // Resto de indicadores: todavía sin fuente conectada al panel (ver README del scraper).
+  return {
+    anterior: 's/d', esperado: 's/d', actual: null,
+    actualPending: true,
+    compareBase: null, compareLabel: '',
+    actualRaw: null, historial: [],
+  };
+}
+
+function renderColsHtml(def, cols){
+  let actualHtml, deviationHtml = '';
+  if(cols.actualPending || cols.actual===null){
+    actualHtml = `<span class="pending">⏳ Pendiente</span>`;
+  } else {
+    let cls = 'neutral';
+    if(def.better && cols.compareBase!==null && cols.actualRaw!==null){
+      const delta = cols.actualRaw - cols.compareBase;
+      const isBetter = def.better==='down' ? delta<0 : delta>0;
+      const isWorse = def.better==='down' ? delta>0 : delta<0;
+      cls = isBetter ? 'good' : isWorse ? 'bad' : 'neutral';
+      if(Math.abs(delta) >= 0.05){
+        const sign = delta>0 ? '+' : '';
+        deviationHtml = `<div class="deviation ${cls}">${sign}${fmt(delta,1)}% ${isBetter?'mejor':isWorse?'peor':''} <span style="opacity:.7">(${cols.compareLabel})</span></div>`;
+      }
+    }
+    actualHtml = `<span class="cval ${cls}">${cols.actual}</span>`;
+  }
+  return `
+    <div class="cols3">
+      <div class="col"><div class="clbl">Anterior</div><div class="cval neutral">${cols.anterior}</div></div>
+      <div class="col"><div class="clbl">Esperado (REM)</div><div class="cval neutral">${cols.esperado}</div></div>
+      <div class="col"><div class="clbl">Actual</div>${actualHtml}${deviationHtml}</div>
+    </div>`;
+}
+
+function renderImpactoHtml(def, key, cols){
+  const histHtml = cols.historial.length
+    ? cols.historial.map(h=>`<div class="hist-row"><span>${h.label}</span><span class="hv">${h.value}</span></div>`).join('')
+    : `<div class="hist-row"><span style="color:var(--dim)">Sin histórico conectado todavía</span></div>`;
+  return `
+    <div class="impacto-box">
+      <h4>💸 Impacto en tu bolsillo</h4>
+      ${histHtml}
+      <div class="criollo">${def.analysis}</div>
+    </div>`;
 }
 
 function renderCalendario(){
@@ -436,25 +552,11 @@ function renderCalendario(){
     const dateKey = it.date.toISOString().slice(0,10);
     const dateLabel = it.date.toLocaleDateString('es-AR',{day:'2-digit',month:'short'});
     const isToday = dateKey===todayKey;
-    let detailHtml = '';
-    if(it.key==='ipc'){
-      const d = ipcCardData();
-      if(d){
-        const delta = d.realVal - d.anteriorVal;
-        const cls = delta>0.05?'bad':delta<-0.05?'good':'neutral';
-        detailHtml = `
-          <div class="stat-box"><div class="lbl">Dato anterior</div><div class="val neutral">${fmt(d.anteriorVal,1)}%</div></div>
-          <div class="stat-box"><div class="lbl">Pronóstico (REM)</div><div class="val neutral">sin dato público</div></div>
-          <div class="stat-box"><div class="lbl">Dato real</div><div class="val ${cls}">${fmt(d.realVal,1)}%</div></div>
-          <div class="expand-note">Último IPC informado por INDEC: ${fmtDate(d.fecha)}. ${delta>0.05?'Subió respecto al mes anterior.':delta<-0.05?'Bajó respecto al mes anterior — buena señal.':'Se mantuvo estable.'}</div>`;
-      } else {
-        detailHtml = `<div class="expand-note">Todavía no hay suficientes datos históricos cargados para comparar.</div>`;
-      }
-    } else {
-      detailHtml = `
-        <div class="stat-box" style="grid-column:1/-1;"><div class="lbl">Estado del dato</div><div class="val neutral">Se publica ~${dateLabel} · sin API pública gratuita para el valor exacto</div></div>
-        <div class="expand-note">${def.note||''}</div>`;
-    }
+
+    const cols = resolveColumns(it.key, it.date);
+    const colsHtml = renderColsHtml(def, cols);
+    const impactoHtml = renderImpactoHtml(def, it.key, cols);
+
     return `<div class="ecard" data-idx="${idx}" onclick="toggleCard(this)">
       <div class="top-row">
         <span class="emoji">${def.emoji}</span>
@@ -466,8 +568,9 @@ function renderCalendario(){
         <span class="tech">${def.tech}</span>
         <span class="info-icon" onclick="event.stopPropagation(); this.classList.toggle('show')">i<span class="tip">${def.tip}</span></span>
       </div>
-      <div class="expand-hint">Tocá para ver el detalle ▾</div>
-      <div class="expand-body" style="display:none;">${detailHtml}</div>
+      ${colsHtml}
+      <div class="expand-hint">Tocá para ver el impacto en tu bolsillo ▾</div>
+      <div class="expand-body" style="display:none;">${impactoHtml}</div>
     </div>`;
   }).join('');
 
@@ -481,13 +584,13 @@ function toggleCard(el){
   });
   if(!wasExpanded){
     el.classList.add('expanded');
-    el.querySelector('.expand-body').style.display='grid';
+    el.querySelector('.expand-body').style.display='block';
   }
 }
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadREM()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
