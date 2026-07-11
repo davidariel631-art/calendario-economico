@@ -7,8 +7,7 @@
 //
 // Documentación oficial: https://www.bcra.gob.ar/apis-banco-central/
 // La variable "Reservas internacionales" tiene idVariable = 1 (es fija,
-// no cambia). Si alguna vez quisieras confirmar el id de otra variable,
-// hacé GET a /estadisticas/v4.0/monetarias y buscá por "descripcion".
+// no cambia). 
 //
 // Nota técnica: el certificado SSL de api.bcra.gob.ar históricamente dio
 // problemas en algunos entornos Node. Este script primero intenta la
@@ -41,25 +40,46 @@ async function fetchReservas() {
 export async function scrapeReservas() {
   const data = await fetchReservas();
   
-  // Soporta si la API devuelve los datos en "results" o directamente en un array
-  const results = data?.results || (Array.isArray(data) ? data : []);
+  let historia = [];
   
-  if (!results.length) {
+  // Extraemos el array de datos buscando tanto en 'detalle' (API v4) como en 'results'
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.detalle)) historia = data.detalle;
+    else if (Array.isArray(data.Detalle)) historia = data.Detalle;
+    else if (Array.isArray(data.results)) historia = data.results;
+    else if (Array.isArray(data)) {
+      historia = data;
+    } else if (data.length > 0 && data[0]) {
+      const primerItem = data[0];
+      historia = primerItem.detalle || primerItem.results || [];
+    }
+  }
+  
+  if (!historia || !historia.length) {
     console.log('Respuesta cruda de la API del BCRA:', JSON.stringify(data, null, 2));
-    throw new Error('La API del BCRA respondió sin resultados para idVariable=1');
+    throw new Error('La API del BCRA respondió sin un listado de datos reconocible (detalle/results).');
   }
 
-  // El último elemento es el más reciente
-  const ultimo = results[results.length - 1];
+  // ¡Inteligencia de Orden! La API a veces manda lo más nuevo al principio y otras al final.
+  // Evaluamos las fechas del primero y del último para asegurar cuál es el más reciente.
+  let ultimo = historia[0]; 
+  if (historia.length > 1) {
+    const fechaPrimero = historia[0].fecha || historia[0].Fecha || '';
+    const fechaUltimo = historia[historia.length - 1].fecha || historia[historia.length - 1].Fecha || '';
+    
+    // Si la fecha del último elemento es mayor, significa que está ordenado cronológicamente tradicional
+    if (fechaUltimo > fechaPrimero) {
+      ultimo = historia[historia.length - 1];
+    }
+  }
   
-  // Blindaje contra cambios de mayúsculas/minúsculas en las llaves de la API (fecha o Fecha, valor o Valor)
+  // Mapeo adaptativo de campos por si cambian mayúsculas/minúsculas
   const fechaEfectiva = ultimo.fecha || ultimo.Fecha;
   const valorEfectivo = ultimo.valor !== undefined ? ultimo.valor : ultimo.Valor;
 
-  // Validación crítica para que Firebase nunca reciba un "undefined" y se rompa
   if (!fechaEfectiva || valorEfectivo === undefined || valorEfectivo === null) {
-    console.log('Contenido del último registro recibido del BCRA:', ultimo);
-    throw new Error('La fecha o el valor de la API del BCRA vinieron vacíos o con nombres de campos irreconocibles.');
+    console.log('Contenido del registro seleccionado:', ultimo);
+    throw new Error('La fecha o el valor del registro elegido vinieron vacíos.');
   }
 
   const registro = {
@@ -72,23 +92,23 @@ export async function scrapeReservas() {
     scrapedAt: new Date().toISOString(),
   };
 
-  console.log('✅ Reservas BCRA encontradas:', registro);
+  console.log('✅ Reservas BCRA encontradas con éxito:', registro);
 
   const db = getDb();
   
-  // Guardar el último dato disponible
+  // Guardar el último dato disponible en el documento principal
   await db.collection('indicadores').doc('reservas_bcra').set({
     ultimo: registro,
   }, { merge: true });
 
-  // Guardar en el histórico usando la fecha como ID del documento
+  // Guardar en la subcolección histórica usando la fecha como ID de documento
   await db.collection('indicadores')
     .doc('reservas_bcra')
     .collection('historico')
     .doc(registro.fecha)
     .set(registro, { merge: true });
 
-  console.log('💾 ✅ Guardado con éxito en Firestore: indicadores/reservas_bcra');
+  console.log('💾 ✅ Guardado impecable en Firestore: indicadores/reservas_bcra');
   return registro;
 }
 
