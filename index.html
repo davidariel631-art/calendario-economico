@@ -237,7 +237,8 @@
   </div>
 
   <footer>
-    Fuentes en vivo: <b>DolarAPI</b> (cotizaciones) · <b>ArgentinaDatos API</b> (riesgo país, IPC INDEC, feriados). Los eventos sin dato público oficial vía API se muestran como "sin dato" — no se inventan cifras. Sin API key · se actualiza cada 60s.
+    Fuentes en vivo: <b>DolarAPI</b> (cotizaciones) · <b>ArgentinaDatos API</b> (riesgo país, IPC INDEC, feriados, UVA). Los eventos sin dato público oficial vía API se muestran como "sin dato" — no se inventan cifras. Sin API key · se actualiza cada 60s.
+    <div id="diagBox" style="margin-top:6px;"></div>
   </footer>
 
 </div>
@@ -329,20 +330,49 @@ function extractValorUnidad(doc){
   return null;
 }
 
+// ---------- FETCH ROBUSTO: timeout + reintentos ----------
+// Antes pedíamos el histórico COMPLETO de riesgo país (7500+ registros) cada
+// 60 segundos, en cada pestaña abierta. Eso es innecesario y puede gatillar
+// límites de uso en la API pública. Ahora: timeout por intento, 2 reintentos
+// con espera creciente, y el histórico pesado se pide UNA sola vez por sesión.
+async function fetchJsonRetry(url, {retries=2, timeoutMs=9000} = {}){
+  let lastErr;
+  for(let attempt=0; attempt<=retries; attempt++){
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+    try{
+      const res = await fetch(url, {signal: ctrl.signal});
+      clearTimeout(t);
+      if(!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+      return await res.json();
+    }catch(err){
+      clearTimeout(t);
+      lastErr = err;
+      if(attempt < retries) await new Promise(r=>setTimeout(r, 800*(attempt+1)));
+    }
+  }
+  throw lastErr;
+}
+
+STATE.errors = {};
+
 async function loadDolares(){
-  const res = await fetch('https://dolarapi.com/v1/dolares');
-  if(!res.ok) throw new Error('dolarapi '+res.status);
-  STATE.dolares = await res.json();
   try{
-    const r2 = await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares');
-    if(r2.ok){
-      const hist = await r2.json();
+    STATE.dolares = await fetchJsonRetry('https://dolarapi.com/v1/dolares');
+    STATE.errors.dolares = null;
+  }catch(e){ STATE.errors.dolares = e.message; throw e; }
+
+  // El histórico de cotizaciones (para "vs. ayer") solo hace falta pedirlo
+  // una vez por sesión — no cambia dato a dato cada 60 segundos.
+  if(!STATE.dolarHist){
+    try{
+      const hist = await fetchJsonRetry('https://api.argentinadatos.com/v1/cotizaciones/dolares', {retries:1});
       const byCasa = {};
       hist.forEach(d=>{ (byCasa[d.casa]=byCasa[d.casa]||[]).push(d); });
       Object.keys(byCasa).forEach(k=> byCasa[k].sort((a,b)=> a.fecha.localeCompare(b.fecha)));
       STATE.dolarHist = byCasa;
-    }
-  }catch(e){ console.warn('histórico dólar no disponible', e); }
+    }catch(e){ console.warn('histórico dólar no disponible (no es crítico):', e.message); }
+  }
   return STATE.dolares;
 }
 function norm(s){ return (s||'').toLowerCase().replace(/[^a-z]/g,''); }
@@ -357,36 +387,51 @@ function ayerVenta(casaKey){
   if(!arr || !arr.length) return null;
   return arr[arr.length-1].venta;
 }
+
 async function loadRiesgo(){
-  const res = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
-  if(!res.ok) throw new Error('riesgo-pais '+res.status);
-  STATE.riesgo = await res.json();
-  try{ const r2 = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais'); if(r2.ok) STATE.riesgoHist = await r2.json(); }catch(e){}
+  try{
+    STATE.riesgo = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
+    STATE.errors.riesgo = null;
+  }catch(e){ STATE.errors.riesgo = e.message; throw e; }
+
+  // El histórico completo (para el sparkline) se pide una sola vez por sesión.
+  if(!STATE.riesgoHist){
+    try{
+      STATE.riesgoHist = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais', {retries:1});
+    }catch(e){ console.warn('histórico riesgo país no disponible (no es crítico):', e.message); }
+  }
   return STATE.riesgo;
 }
+
 async function loadInflacion(){
-  const [mRes, iRes] = await Promise.all([
-    fetch('https://api.argentinadatos.com/v1/finanzas/indices/inflacion'),
-    fetch('https://api.argentinadatos.com/v1/finanzas/indices/inflacion-interanual')
-  ]);
-  STATE.inflMensual = mRes.ok ? await mRes.json() : [];
-  STATE.inflInteranual = iRes.ok ? await iRes.json() : [];
+  try{
+    const [mensual, interanual] = await Promise.all([
+      fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacion'),
+      fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacion-interanual')
+    ]);
+    STATE.inflMensual = mensual; STATE.inflInteranual = interanual;
+    STATE.errors.inflacion = null;
+  }catch(e){ STATE.errors.inflacion = e.message; throw e; }
   return {mensual:STATE.inflMensual, interanual:STATE.inflInteranual};
 }
+
 async function loadFeriados(){
   const year = new Date().getFullYear();
-  const res = await fetch(`https://api.argentinadatos.com/v1/feriados/${year}`);
-  if(!res.ok) throw new Error('feriados '+res.status);
-  STATE.feriados = await res.json(); return STATE.feriados;
+  try{
+    STATE.feriados = await fetchJsonRetry(`https://api.argentinadatos.com/v1/feriados/${year}`);
+    STATE.errors.feriados = null;
+  }catch(e){ STATE.errors.feriados = e.message; throw e; }
+  return STATE.feriados;
 }
 
 // UVA: unidad que ajusta créditos hipotecarios UVA y muchos contratos de
 // alquiler. Endpoint oficial confirmado de ArgentinaDatos.
 async function loadUVA(){
-  const res = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/uva');
-  if(!res.ok) throw new Error('uva '+res.status);
-  const data = await res.json();
-  STATE.uva = [...data].sort((a,b)=> a.fecha.localeCompare(b.fecha));
+  try{
+    const data = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/uva', {retries:1});
+    STATE.uva = [...data].sort((a,b)=> a.fecha.localeCompare(b.fecha));
+    STATE.errors.uva = null;
+  }catch(e){ STATE.errors.uva = e.message; /* no crítico */ }
   return STATE.uva;
 }
 
@@ -461,7 +506,12 @@ function renderResumen(){
 }
 
 function renderSemaforo(){
-  if(!STATE.riesgo) return;
+  if(!STATE.riesgo){
+    if(STATE.errors.riesgo){
+      $('semaforoBox').innerHTML = `<div class="loading" style="color:var(--red)">⚠️ No se pudo conectar con la fuente de riesgo país. Reintenta solo en el próximo ciclo (60s).<br><span style="color:var(--dim); font-size:9.5px;">${STATE.errors.riesgo}</span></div>`;
+    }
+    return;
+  }
   const v = STATE.riesgo.valor; let color,label,desc;
   if(v<500){color='var(--green)'; label='Verde'; desc='Riesgo bajo — cerca de grado inversor';}
   else if(v<1200){color='var(--amber)'; label='Amarillo'; desc='Riesgo moderado, mercado cauteloso';}
@@ -470,7 +520,12 @@ function renderSemaforo(){
 }
 
 function renderRiesgo(){
-  if(!STATE.riesgo) return;
+  if(!STATE.riesgo){
+    if(STATE.errors.riesgo){
+      $('riesgoBox').innerHTML = `<div class="loading" style="color:var(--red)">⚠️ Sin conexión con la fuente. Reintentando solo cada 60s.</div>`;
+    }
+    return;
+  }
   const hist = (STATE.riesgoHist||[]).slice(-40); const values = hist.map(h=>h.valor);
   const prev = hist.length>1? hist[hist.length-2].valor : null;
   const delta = prev!==null? STATE.riesgo.valor-prev : null; const st = statusClass(delta);
@@ -482,7 +537,12 @@ function renderRiesgo(){
 
 function renderBrecha(){
   const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
-  if(!byCasa.oficial || !byCasa.blue){ $('brechaBox').innerHTML='<div class="loading">sin datos</div>'; return; }
+  if(!byCasa.oficial || !byCasa.blue){
+    $('brechaBox').innerHTML = STATE.errors.dolares
+      ? `<div class="loading" style="color:var(--red)">⚠️ No se pudo conectar con DolarAPI. Reintentando cada 60s.</div>`
+      : `<div class="loading">sin datos</div>`;
+    return;
+  }
   const brecha = ((byCasa.blue.venta-byCasa.oficial.venta)/byCasa.oficial.venta)*100;
   const st = brecha>30?'var(--red)':brecha>10?'var(--amber)':'var(--green)';
   const pct = Math.min(100, Math.max(0,brecha)); const deg=(pct/100)*360;
@@ -493,7 +553,12 @@ function renderBrecha(){
 
 function renderInflacion(){
   const arr = (STATE.inflMensual||[]).slice(-6);
-  if(!arr.length){ $('inflacionBox').innerHTML='<div class="loading">sin datos</div>'; return; }
+  if(!arr.length){
+    $('inflacionBox').innerHTML = STATE.errors.inflacion
+      ? `<div class="loading" style="color:var(--red)">⚠️ No se pudo conectar con la fuente de inflación. Reintentando cada 60s.</div>`
+      : `<div class="loading">sin datos</div>`;
+    return;
+  }
   const max = Math.max(...arr.map(a=>Math.abs(a.valor)),1);
   const bars = arr.map(a=>{ const h=Math.max(4,(Math.abs(a.valor)/max)*56); return `<div class="bar ${a.valor<0?'neg':''}" style="height:${h}px;"><span>${fmt(a.valor,1)}</span></div>`; }).join('');
   const labels = arr.map(a=>`<div>${new Date(a.fecha+'T12:00:00').toLocaleDateString('es-AR',{month:'short'})}</div>`).join('');
@@ -539,8 +604,24 @@ function buildScheduleForMonth(year, monthIdx){
   ].filter(i=> i.date.getFullYear()===year && i.date.getMonth()===monthIdx);
 }
 
+// DATOS SEMILLA: los valores reales que vos mismo pasaste (informes oficiales
+// de julio 2026), para que la página no arranque vacía. Esto NO se actualiza
+// solo — es una foto fija. En cuanto el scraper o la carga manual escriban
+// un dato en Firestore para esa misma clave, ESE dato real tiene prioridad
+// y reemplaza automáticamente a la semilla.
+const SEED_DATA = {
+  reservas_bcra: { valor: 48722, unidad: 'M USD', fecha: '2026-07-09',
+    fuente: 'dato inicial provisto por vos — el scraper del BCRA lo va a ir actualizando solo' },
+  recaudacion: { valor: 20017104, unidad: 'Millones de $', fecha: '2026-06',
+    fuente: 'dato inicial provisto por vos (ARCA, junio 2026) — cargá el próximo mes desde admin-carga.html' },
+  rem_ipc_esperado: { valor: 2.0, unidad: '%', fecha: '2026-06',
+    fuente: 'dato inicial provisto por vos (REM, esperado junio 2026) — cargá el próximo mes desde admin-carga.html' },
+  emae: { valor: 1.6, unidad: '%', fecha: '2026-04',
+    fuente: 'dato inicial provisto por vos (INDEC, abril 2026, con el rezago natural del EMAE) — cargá el próximo mes desde admin-carga.html' },
+};
+
 function remInflacionEsperada(){
-  const doc = STATE.firestore?.rem_ipc_esperado;
+  const doc = STATE.firestore?.rem_ipc_esperado || SEED_DATA.rem_ipc_esperado;
   const v = extractValorUnidad(doc);
   return v ? v.valor : null;
 }
@@ -572,9 +653,12 @@ function resolveColumns(key, eventDate){
   }
 
   // Resto de indicadores: vienen del scraper (Reservas) o de carga manual
-  // (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM).
+  // (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM). Si
+  // Firestore todavía no tiene nada guardado, usamos el dato semilla real
+  // que vos nos pasaste, para no arrancar en cero.
   const fsKey = FIRESTORE_KEY_MAP[key];
-  const doc = STATE.firestore?.[fsKey];
+  const doc = STATE.firestore?.[fsKey] || SEED_DATA[fsKey];
+  const isSeed = !STATE.firestore?.[fsKey] && !!SEED_DATA[fsKey];
   const v = extractValorUnidad(doc);
 
   if(!v){
@@ -582,6 +666,7 @@ function resolveColumns(key, eventDate){
   }
 
   const decimales = v.unidad === '%' ? 1 : 0;
+  const fechaLabel = v.fecha ? fmtDate(v.fecha+(v.fecha.length===7?'-01':'')) : '—';
   return {
     anterior: 's/d', // se puede mejorar leyendo el historico/ de Firestore
     esperado: 's/d',
@@ -590,7 +675,10 @@ function resolveColumns(key, eventDate){
     compareBase: null,
     compareLabel: '',
     actualRaw: v.valor,
-    historial: [{label: v.fecha ? fmtDate(v.fecha+(v.fecha.length===7?'-01':'')) : '—', value: `${fmt(v.valor, decimales)} ${v.unidad}`.trim()}],
+    historial: [{
+      label: fechaLabel + (isSeed ? ' (dato inicial)' : ''),
+      value: `${fmt(v.valor, decimales)} ${v.unidad}`.trim(),
+    }],
   };
 }
 
@@ -680,11 +768,26 @@ function toggleCard(el){
   }
 }
 
+function renderDiagnostico(){
+  const sources = [
+    {k:'dolares', label:'Dólar'},
+    {k:'riesgo', label:'Riesgo país'},
+    {k:'inflacion', label:'Inflación'},
+    {k:'feriados', label:'Feriados'},
+    {k:'uva', label:'UVA'},
+  ];
+  $('diagBox').innerHTML = sources.map(s=>{
+    const err = STATE.errors[s.k];
+    const icon = err===null || err===undefined ? '✅' : '❌';
+    return `<span title="${err||'ok'}" style="margin-right:10px;">${icon} ${s.label}</span>`;
+  }).join('');
+}
+
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
   const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
-  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario();
+  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
 }
 loadAll();
