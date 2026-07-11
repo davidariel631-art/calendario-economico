@@ -277,10 +277,10 @@ function sparkline(values, w=260, h=46, colorPos='var(--red)', colorNeg='var(--g
 let STATE = {};
 const CASA_LABELS = { oficial:'Oficial', blue:'Blue', bolsa:'MEP', contadoconliqui:'CCL', mayorista:'Mayorista', cripto:'Cripto', tarjeta:'Tarjeta' };
 
-// Mismo proyecto de Firebase donde el scraper (BCRA/INDEC) y el panel de
-// carga manual guardan los indicadores. Esto es SOLO LECTURA — para que
-// funcione, las reglas de Firestore tienen que permitir "allow read: if true"
-// en la colección "indicadores" (ver README del scraper).
+// Mismo proyecto de Firebase donde el scraper (BCRA) y el panel de carga
+// manual (admin-carga.html) guardan los indicadores. Esto es SOLO LECTURA.
+// Para que funcione, las reglas de Firestore tienen que permitir
+// "allow read: if true" en la colección "indicadores" (ver README).
 const firebaseConfig = {
   apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
   authDomain: "economia-8333c.firebaseapp.com",
@@ -290,30 +290,69 @@ const firebaseConfig = {
   appId: "1:592136842311:web:f9314e5106c21e09e75562",
 };
 let fsDb = null;
-try{
-  firebase.initializeApp(firebaseConfig);
-  fsDb = firebase.firestore();
-}catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+// Chequeo defensivo: si el <script> de gstatic.com no llegó a cargar (red,
+// firewall, ad-blocker), "firebase" no existe todavía. Sin este chequeo,
+// cualquier referencia a "firebase.algo" tira "firebase is not defined" y
+// puede cortar el resto del script. Con esto, el panel sigue funcionando
+// igual (sin los datos de Firestore) en vez de romperse entero.
+if(typeof firebase !== 'undefined'){
+  try{
+    firebase.initializeApp(firebaseConfig);
+    fsDb = firebase.firestore();
+  }catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+} else {
+  console.warn('El SDK de Firebase no cargó (revisá conexión / bloqueadores). El panel sigue andando sin esos datos.');
+}
 
-// Claves de Firestore que alimentan cada tarjeta del calendario.
-// "ipc" no está acá: el IPC ya viene de ArgentinaDatos (loadInflacion).
+// ============================================================
+// LISTA OFICIAL DE KEYS DE FIRESTORE (indicadores/{key})
+// admin-carga.html tiene que escribir EXACTAMENTE en estos IDs,
+// o el dashboard no los va a encontrar:
+//   - reservas_bcra       (lo escribe el scraper del BCRA, no se carga a mano)
+//   - recaudacion         (carga manual)
+//   - emae                (carga manual)
+//   - resultado_fiscal    (carga manual)
+//   - cambiario           (carga manual)
+//   - rem_ipc_esperado    (carga manual — también alimenta "Esperado" del IPC)
+// Cada doc tiene: { ultimo: {...} } y una subcolección historico/{fecha}.
+// ============================================================
 const FIRESTORE_KEY_MAP = {
-  reservas: 'reservas_bcra',        // lo escribe tu scraper (API oficial BCRA)
-  recaudacion: 'recaudacion',       // carga manual
-  emae: 'emae',                     // carga manual
-  fiscal: 'resultado_fiscal',       // carga manual
-  cambiario: 'cambiario',           // carga manual
-  rem: 'rem_ipc_esperado',          // carga manual (también alimenta "Esperado" del IPC)
+  reservas: 'reservas_bcra',
+  recaudacion: 'recaudacion',
+  emae: 'emae',
+  fiscal: 'resultado_fiscal',
+  cambiario: 'cambiario',
+  rem: 'rem_ipc_esperado',
 };
+
+// Trae el "último dato conocido" de un indicador: primero prueba el campo
+// "ultimo" (el más rápido de leer); si no existe, busca el documento más
+// reciente dentro de la subcolección "historico" (fallback real, no un
+// invento) — así, aunque el dato de ESTE mes no esté cargado todavía, el
+// panel muestra el dato real más reciente que sí tenemos, con su fecha.
+async function fetchIndicadorConFallback(fsKey){
+  if(!fsDb) return null;
+  try{
+    const docRef = fsDb.collection('indicadores').doc(fsKey);
+    const snap = await docRef.get();
+    if(snap.exists && snap.data().ultimo) return {...snap.data().ultimo, esFallbackHistorico:false};
+
+    // No hay "ultimo" -> buscamos el más reciente del historico.
+    const histSnap = await docRef.collection('historico')
+      .orderBy(firebase.firestore.FieldPath.documentId(), 'desc')
+      .limit(1).get();
+    if(!histSnap.empty) return {...histSnap.docs[0].data(), esFallbackHistorico:true};
+  }catch(e){
+    console.warn('Firestore: no se pudo leer', fsKey, e.message);
+  }
+  return null;
+}
 
 async function loadIndicadoresFirestore(){
   if(!fsDb) return {};
   const out = {};
   await Promise.all(Object.values(FIRESTORE_KEY_MAP).map(async fsKey=>{
-    try{
-      const doc = await fsDb.collection('indicadores').doc(fsKey).get();
-      if(doc.exists) out[fsKey] = doc.data().ultimo || null;
-    }catch(e){ console.warn('Firestore: no se pudo leer', fsKey, e.message); }
+    out[fsKey] = await fetchIndicadorConFallback(fsKey);
   }));
   STATE.firestore = out;
   return out;
@@ -324,9 +363,9 @@ async function loadIndicadoresFirestore(){
 // - el que escribe la carga manual (valor + unidad)
 function extractValorUnidad(doc){
   if(!doc) return null;
-  if(typeof doc.valor === 'number') return {valor: doc.valor, unidad: doc.unidad || '', fecha: doc.fecha};
-  if(typeof doc.valorMillonesUSD === 'number') return {valor: doc.valorMillonesUSD, unidad: 'M USD', fecha: doc.fecha};
-  if(typeof doc.valorPorcentaje === 'number') return {valor: doc.valorPorcentaje, unidad: '%', fecha: doc.fecha};
+  if(typeof doc.valor === 'number') return {valor: doc.valor, unidad: doc.unidad || '', fecha: doc.fecha, esFallbackHistorico: !!doc.esFallbackHistorico};
+  if(typeof doc.valorMillonesUSD === 'number') return {valor: doc.valorMillonesUSD, unidad: 'M USD', fecha: doc.fecha, esFallbackHistorico: !!doc.esFallbackHistorico};
+  if(typeof doc.valorPorcentaje === 'number') return {valor: doc.valorPorcentaje, unidad: '%', fecha: doc.fecha, esFallbackHistorico: !!doc.esFallbackHistorico};
   return null;
 }
 
@@ -652,32 +691,40 @@ function resolveColumns(key, eventDate){
     };
   }
 
-  // Resto de indicadores: vienen del scraper (Reservas) o de carga manual
-  // (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM). Si
-  // Firestore todavía no tiene nada guardado, usamos el dato semilla real
-  // que vos nos pasaste, para no arrancar en cero.
+  // Resto de indicadores: Reservas viene del scraper del BCRA; el resto
+  // (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM) tiene a
+  // admin-carga.html como única fuente de verdad (ver bloque FIRESTORE_KEY_MAP
+  // arriba para la lista exacta de IDs). Prioridad: dato de Firestore de este
+  // período > último dato conocido en el histórico > semilla inicial > nada.
   const fsKey = FIRESTORE_KEY_MAP[key];
   const doc = STATE.firestore?.[fsKey] || SEED_DATA[fsKey];
   const isSeed = !STATE.firestore?.[fsKey] && !!SEED_DATA[fsKey];
   const v = extractValorUnidad(doc);
 
   if(!v){
-    return { anterior:'s/d', esperado:'s/d', actual:null, actualPending:true, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
+    return { anterior:'—', esperado:'—', actual:'—', actualPending:false, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
   }
 
   const decimales = v.unidad === '%' ? 1 : 0;
   const fechaLabel = v.fecha ? fmtDate(v.fecha+(v.fecha.length===7?'-01':'')) : '—';
+  const valorTexto = `${fmt(v.valor, decimales)} ${v.unidad}`.trim();
+  // Si el dato viene del histórico (no hay "ultimo" fresco) o es la semilla,
+  // lo mostramos igual — pero con la fecha real al lado, nunca "Pendiente".
+  const esDatoViejo = v.esFallbackHistorico || isSeed;
+
   return {
-    anterior: 's/d', // se puede mejorar leyendo el historico/ de Firestore
+    anterior: 's/d',
     esperado: 's/d',
-    actual: `${fmt(v.valor, decimales)} ${v.unidad}`.trim(),
+    actual: valorTexto,
     actualPending: false,
+    actualStale: esDatoViejo,
+    staleLabel: `Dato: ${fechaLabel}`,
     compareBase: null,
     compareLabel: '',
     actualRaw: v.valor,
     historial: [{
-      label: fechaLabel + (isSeed ? ' (dato inicial)' : ''),
-      value: `${fmt(v.valor, decimales)} ${v.unidad}`.trim(),
+      label: fechaLabel + (isSeed ? ' (dato inicial)' : v.esFallbackHistorico ? ' (último cargado)' : ''),
+      value: valorTexto,
     }],
   };
 }
@@ -699,6 +746,11 @@ function renderColsHtml(def, cols){
       }
     }
     actualHtml = `<span class="cval ${cls}">${cols.actual}</span>`;
+    // Si el dato no es del ciclo actual (viene del histórico o de la semilla),
+    // lo aclaramos con una etiqueta chica en vez de simular que es de hoy.
+    if(cols.actualStale && cols.staleLabel){
+      deviationHtml += `<div class="deviation neutral" style="opacity:.75;">🕘 ${cols.staleLabel}</div>`;
+    }
   }
   return `
     <div class="cols3">
