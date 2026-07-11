@@ -1,16 +1,13 @@
 {
   "name": "scraper-arg-economico",
-  "version": "1.0.0",
-  "description": "Lee Reservas del BCRA (API oficial) e IPC del INDEC (scraping con respaldo) y los guarda en Firestore, una vez por día.",
+  "version": "2.0.0",
+  "description": "Lee Reservas del BCRA (API oficial, 100% estable) y las guarda en Firestore una vez por día. El resto de los indicadores (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM) se cargan a mano desde admin-carga.html, porque ARCA/INDEC no tienen ni una API ni una página estática confiable para scrapear.",
   "type": "module",
   "scripts": {
-    "reservas": "node scripts/scrape-bcra-reservas.js",
-    "ipc": "node scripts/scrape-indec-ipc.js",
-    "all": "npm run reservas && npm run ipc"
+    "reservas": "node scripts/scrape-bcra-reservas.js"
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",
-    "puppeteer": "^23.6.0",
     "undici": "^6.19.0"
   }
 }
