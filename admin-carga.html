@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carga rápida — Indicadores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#10161a; --panel:#1a2327; --line:#2a373b; --chalk:#eef0ee; --dim:#8fa19f;
+    --amber:#ffb238; --green:#39d98a; --red:#ff6161; --celeste:#7cc0ea; }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--chalk); font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh; margin:0; padding:20px; display:flex; justify-content:center;}
+  .card{width:100%; max-width:440px; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:22px; margin-top:30px;}
+  h1{font-size:18px; margin:0 0 4px 0;}
+  .sub{font-size:12px; color:var(--dim); margin-bottom:18px; line-height:1.5;}
+  label{display:block; font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; margin:14px 0 5px;}
+  input, select{
+    width:100%; background:#141b1e; border:1px solid var(--line); color:var(--chalk);
+    padding:9px 10px; border-radius:7px; font-family:inherit; font-size:14px;
+  }
+  input:focus, select:focus{outline:none; border-color:var(--celeste);}
+  button{
+    width:100%; margin-top:18px; padding:11px; border:none; border-radius:8px;
+    background:var(--green); color:#0a1f16; font-weight:800; font-size:14px; cursor:pointer;
+    letter-spacing:.02em;
+  }
+  button:hover{filter:brightness(1.08);}
+  button:disabled{opacity:.5; cursor:not-allowed;}
+  button.secondary{background:transparent; border:1px solid var(--celeste); color:var(--celeste); font-weight:700; margin-top:8px;}
+  .msg{margin-top:12px; font-size:12.5px; padding:9px 10px; border-radius:7px; display:none;}
+  .msg.ok{display:block; background:#123326; color:var(--green); border:1px solid var(--green);}
+  .msg.err{display:block; background:#3a1a1a; color:var(--red); border:1px solid var(--red);}
+  .hist{margin-top:20px; border-top:1px solid var(--line); padding-top:14px;}
+  .hist h2{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--celeste); margin:0 0 8px 0;}
+  .hist-row{display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .hist-row:last-child{border-bottom:none;}
+  .hist-row b{color:var(--chalk);}
+  #loginBox, #formBox{display:none;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>📥 Carga rápida de indicadores</h1>
+  <div class="sub">Para los datos que ARCA/INDEC no exponen por API (Recaudación, REM, EMAE, Resultado fiscal, Balance cambiario). Se guarda en el mismo Firestore que usa el scraper — tu panel principal lo lee automáticamente.</div>
+
+  <div id="loginBox">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="tu-email@ejemplo.com" autocomplete="username">
+    <label>Contraseña</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    <button onclick="login()">Ingresar</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <div id="formBox">
+    <label>Indicador</label>
+    <select id="indicador">
+      <option value="recaudacion">💰 Recaudación (ARCA)</option>
+      <option value="rem_ipc_esperado">📊 REM — inflación mensual esperada</option>
+      <option value="emae">🏭 EMAE (INDEC)</option>
+      <option value="resultado_fiscal">⚖️ Resultado fiscal (Hacienda)</option>
+      <option value="cambiario">💱 Balance cambiario (BCRA)</option>
+    </select>
+
+    <label>Período (mes del dato)</label>
+    <input type="month" id="periodo">
+
+    <label>Valor</label>
+    <input type="number" step="any" id="valor" placeholder="ej: 20017104 o 2,0 o -150000">
+
+    <label>Unidad</label>
+    <select id="unidad">
+      <option value="Millones de $">Millones de $ (ARS)</option>
+      <option value="%">% (variación)</option>
+      <option value="Millones de USD">Millones de USD</option>
+    </select>
+
+    <label>Fuente (opcional, para tu propia referencia)</label>
+    <input type="text" id="fuente" placeholder="ej: informe ARCA junio 2026, pág. 3">
+
+    <button onclick="guardar()">Guardar en Firestore</button>
+    <button class="secondary" onclick="logout()">Cerrar sesión</button>
+    <div class="msg" id="formMsg"></div>
+
+    <div class="hist">
+      <h2>Últimos cargados en esta sesión</h2>
+      <div id="histBox" style="font-size:12px; color:var(--dim);">Todavía no cargaste nada en esta sesión.</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// Mismo proyecto de Firebase que ya usás en el panel principal.
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const $ = id => document.getElementById(id);
+const sessionEntries = [];
+
+auth.onAuthStateChanged(user => {
+  if(user){
+    $('loginBox').style.display = 'none';
+    $('formBox').style.display = 'block';
+  } else {
+    $('loginBox').style.display = 'block';
+    $('formBox').style.display = 'none';
+  }
+});
+
+function showMsg(id, text, ok){
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+async function login(){
+  try{
+    await auth.signInWithEmailAndPassword($('email').value.trim(), $('password').value);
+  }catch(err){
+    showMsg('loginMsg', 'No se pudo ingresar: ' + err.message, false);
+  }
+}
+function logout(){ auth.signOut(); }
+
+async function guardar(){
+  const key = $('indicador').value;
+  const periodo = $('periodo').value; // YYYY-MM
+  const valorRaw = $('valor').value;
+  const unidad = $('unidad').value;
+  const fuente = $('fuente').value.trim();
+
+  if(!periodo || valorRaw===''){
+    showMsg('formMsg', 'Falta el período o el valor.', false);
+    return;
+  }
+  const valor = parseFloat(valorRaw.replace(',', '.'));
+  if(Number.isNaN(valor)){
+    showMsg('formMsg', 'El valor no es un número válido.', false);
+    return;
+  }
+
+  const registro = {
+    valor, unidad, fecha: periodo,
+    fuente: fuente || '(sin especificar)',
+    metodo: 'carga_manual',
+    capturedAt: new Date().toISOString(),
+    capturedBy: auth.currentUser.email,
+  };
+
+  try{
+    await db.collection('indicadores').doc(key).set({ ultimo: registro }, { merge: true });
+    await db.collection('indicadores').doc(key).collection('historico').doc(periodo).set(registro, { merge: true });
+    showMsg('formMsg', '✅ Guardado: ' + key + ' → ' + valor + ' ' + unidad, true);
+    sessionEntries.unshift({key, valor, unidad, periodo});
+    renderHist();
+    $('valor').value = ''; $('fuente').value = '';
+  }catch(err){
+    showMsg('formMsg', '❌ Error al guardar: ' + err.message, false);
+  }
+}
+
+function renderHist(){
+  if(!sessionEntries.length) return;
+  $('histBox').innerHTML = sessionEntries.slice(0,6).map(e=>
+    `<div class="hist-row"><span>${e.key} · ${e.periodo}</span><b>${e.valor} ${e.unidad}</b></div>`
+  ).join('');
+}
+</script>
+</body>
+</html>
