@@ -4,7 +4,9 @@
   "description": "Lee Reservas del BCRA (API oficial, 100% estable) y las guarda en Firestore una vez por día. El resto de los indicadores (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM) se cargan a mano desde admin-carga.html, porque ARCA/INDEC no tienen ni una API ni una página estática confiable para scrapear.",
   "type": "module",
   "scripts": {
-    "reservas": "node scripts/scrape-bcra-reservas.js"
+    "reservas": "node scripts/scrape-bcra-reservas.js",
+    "cambiario": "node scripts/scrape-bcra-balance-cambiario.js",
+    "all": "npm run reservas && npm run cambiario"
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",
