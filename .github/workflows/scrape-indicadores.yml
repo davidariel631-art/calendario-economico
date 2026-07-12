@@ -1,10 +1,10 @@
-name: Scrapear indicadores económicos
+name: Scrapear indicadores del BCRA
 
 on:
   schedule:
     # 09:15 hora Argentina = 12:15 UTC (Argentina no tiene horario de verano)
     - cron: '15 12 * * *'
-  workflow_dispatch: {}   # también podés tocar "Run workflow" a mano en GitHub
+  workflow_dispatch: {}
 
 jobs:
   scrape:
@@ -21,15 +21,13 @@ jobs:
       - name: Instalar dependencias
         run: npm install
 
-      - name: Instalar Chromium para Puppeteer
-        run: npx puppeteer browsers install chrome
-
-      - name: Leer Reservas del BCRA
+      - name: Reservas del BCRA (API oficial)
         run: npm run reservas
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
-      - name: Leer IPC del INDEC
-        run: npm run ipc
+      - name: Balance Cambiario del BCRA (informe mensual HTML oficial)
+        run: npm run cambiario
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        continue-on-error: true   # el informe del mes puede no estar publicado todavía
