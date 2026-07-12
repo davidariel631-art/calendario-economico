@@ -44,7 +44,7 @@
 <body>
 <div class="card">
   <h1>📥 Carga rápida de indicadores</h1>
-  <div class="sub">Para los datos que ARCA/INDEC no exponen por API (Recaudación, REM, EMAE, Resultado fiscal, Balance cambiario). Se guarda en el mismo Firestore que usa el scraper — tu panel principal lo lee automáticamente.</div>
+  <div class="sub">Para los 2 únicos datos que ARCA/Hacienda no exponen por ninguna fuente automatizable de forma confiable: Recaudación y Resultado fiscal. (IPC, EMAE, REM, Reservas y Balance cambiario ya se actualizan solos).</div>
 
   <div id="loginBox">
     <label>Email</label>
@@ -59,10 +59,7 @@
     <label>Indicador</label>
     <select id="indicador">
       <option value="recaudacion">💰 Recaudación (ARCA)</option>
-      <option value="rem_ipc_esperado">📊 REM — inflación mensual esperada</option>
-      <option value="emae">🏭 EMAE (INDEC)</option>
       <option value="resultado_fiscal">⚖️ Resultado fiscal (Hacienda)</option>
-      <option value="cambiario">💱 Balance cambiario (BCRA)</option>
     </select>
 
     <label>Período (mes del dato)</label>
