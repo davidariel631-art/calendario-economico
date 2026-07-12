@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finanzas — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<style>
+  table{width:100%; border-collapse:collapse; margin-top:10px; font-size:12.5px;}
+  th{text-align:left; font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); padding:8px; border-bottom:1px solid var(--line);}
+  td{padding:10px 8px; border-bottom:1px dashed var(--line); transition:background .12s ease;}
+  tr:hover td{background:rgba(124,192,234,.04);}
+  tr:last-child td{border-bottom:none;}
+  td.entidad{color:var(--chalk); font-weight:600;}
+  td.tasa{font-variant-numeric:tabular-nums; font-weight:800; color:var(--green); text-align:right;}
+  .note-box{background:var(--celeste-bg); border:1px solid var(--celeste); border-radius:8px; padding:14px 16px; font-size:12px; color:var(--chalk); line-height:1.55; margin-top:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="#" class="disabled" title="Próximamente">Consumo</a>
+    <a href="hogar.html">Hogar</a>
+    <a href="finanzas.html" class="active">Finanzas</a>
+    <a href="#" class="disabled" title="Próximamente">Calendario</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>FINANZAS</h1>
+      <span class="eyebrow">plazo fijo y rendimientos · Argentina</span>
+    </div>
+  </header>
+
+  <div class="panel">
+    <h2>Tasas de plazo fijo por banco <small id="pfSub"></small></h2>
+    <div id="pfBox"><div class="loading">Cargando tasas…</div></div>
+    <div class="loading" id="pfWarning" style="display:none; color:var(--red); text-align:left;"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Calculadora: ¿cuánto rinde tu plata?</h2>
+    <div class="field">
+      <label>Monto a invertir</label>
+      <input type="number" id="monto" placeholder="ej: 500000" min="0">
+    </div>
+    <div class="field">
+      <label>Plazo</label>
+      <select id="plazo">
+        <option value="30">30 días</option>
+        <option value="60">60 días</option>
+        <option value="90">90 días</option>
+      </select>
+    </div>
+    <button class="btn" onclick="calcularRendimiento()">Calcular con la mejor tasa disponible</button>
+    <div class="result-box" id="resultBox" style="display:none;">
+      <div class="result-row"><span>Banco con mejor tasa</span><span class="val" id="rBanco">—</span></div>
+      <div class="result-row"><span>TEA informada</span><span class="val mono" id="rTasa">—</span></div>
+      <div class="result-row"><span>Interés estimado del período</span><span class="val mono" id="rInteres">—</span></div>
+      <div class="result-row"><span>Total al vencimiento</span><span class="val mono" id="rTotal">—</span></div>
+    </div>
+    <div class="note-box">
+      El cálculo es una <b>aproximación simple</b> (TEA prorrateada linealmente por los días del plazo), no un cálculo financiero exacto de interés compuesto. Usalo como referencia, no como cifra definitiva para decidir — comparalo directo en el home banking del banco elegido.
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Billeteras virtuales (Mercado Pago, Ualá, Personal Pay, Naranja X)</h2>
+    <div class="note-box" style="background:var(--red-bg); border-color:var(--red);">
+      <b>Esto no está automatizado, y probablemente nunca lo esté de forma 100% confiable.</b> Los rendimientos de billeteras virtuales no son un dato regulado con API pública como el plazo fijo bancario — cada empresa lo muestra solo en su propia app, cambia seguido, y no hay ninguna fuente oficial centralizada (ni siquiera el Régimen de Transparencia del BCRA los cubre, porque no son depósitos a plazo fijo tradicionales). La opción realista acá es cargarlo a mano de vez en cuando, o directamente aceptar que para esto conviene mirar la app de cada billetera.
+    </div>
+  </div>
+
+  <footer>
+    Fuente: <b>BCRA — API de Régimen de Transparencia v1.0</b> (api.bcra.gob.ar/transparencia/v1.0), datos declarados por los propios bancos con carácter de declaración jurada. El BCRA aclara que no garantiza la exactitud de lo informado por cada entidad.
+  </footer>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+let tasas = [];
+
+async function fetchConFallback(paths){
+  for(const path of paths){
+    try{
+      const res = await fetch(`https://api.bcra.gob.ar/transparencia/v1.0/${path}`);
+      if(res.ok){
+        const json = await res.json();
+        if(json?.results?.length) return json.results;
+      }
+    }catch(e){ /* probamos el siguiente candidato */ }
+  }
+  return null;
+}
+
+async function init(){
+  // No hay 100% de certeza sobre si el nombre del endpoint es "PlazoFijo" o
+  // "PlazosFijos" sin ejecutarlo en un navegador real — probamos ambos en
+  // vez de asumir, para no romper si el nombre correcto es el otro.
+  const data = await fetchConFallback(['PlazoFijo', 'PlazosFijos']);
+
+  if(!data){
+    $('pfBox').innerHTML = '<div class="loading">No se pudo leer la API del BCRA en este momento.</div>';
+    $('pfWarning').style.display = 'block';
+    $('pfWarning').textContent = 'Si esto persiste, puede que el nombre exacto del endpoint sea distinto al esperado (PlazoFijo/PlazosFijos) — revisar el manual del desarrollador del BCRA para confirmarlo.';
+    return;
+  }
+
+  tasas = data
+    .map(d => ({
+      entidad: d.entidad || d.descripcionEntidad || d.nombreEntidad || 'Entidad',
+      tasa: d.tnaClientes ?? d.tasaEfectivaAnual ?? d.tasa ?? d.tea ?? null,
+      montoMinimo: d.montoMinimo ?? null,
+    }))
+    .filter(t => typeof t.tasa === 'number' && t.tasa > 0)
+    .sort((a,b) => b.tasa - a.tasa);
+
+  if(!tasas.length){
+    $('pfBox').innerHTML = '<div class="loading">La API respondió pero no se pudo identificar el campo de la tasa. Revisar schema.</div>';
+    return;
+  }
+
+  $('pfSub').textContent = `${tasas.length} entidades informadas`;
+  $('pfBox').innerHTML = `
+    <table>
+      <thead><tr><th>Entidad</th><th style="text-align:right;">TEA</th></tr></thead>
+      <tbody>
+        ${tasas.slice(0,15).map(t => `<tr><td class="entidad">${t.entidad}</td><td class="tasa">${fmt(t.tasa,2)}%</td></tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function calcularRendimiento(){
+  const monto = parseFloat($('monto').value);
+  const dias = parseInt($('plazo').value);
+  if(!monto || monto <= 0){ alert('Ingresá un monto válido.'); return; }
+  if(!tasas.length){ alert('Todavía no hay tasas cargadas.'); return; }
+
+  const mejor = tasas[0];
+  const interes = monto * (mejor.tasa/100) * (dias/365);
+
+  $('rBanco').textContent = mejor.entidad;
+  $('rTasa').textContent = fmt(mejor.tasa,2) + '%';
+  $('rInteres').textContent = '$' + fmt(interes,0);
+  $('rTotal').textContent = '$' + fmt(monto+interes,0);
+  $('resultBox').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>

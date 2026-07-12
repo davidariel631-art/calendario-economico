@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hogar — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="#" class="disabled" title="Próximamente">Consumo</a>
+    <a href="hogar.html" class="active">Hogar</a>
+    <a href="finanzas.html">Finanzas</a>
+    <a href="#" class="disabled" title="Próximamente">Calendario</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>HOGAR</h1>
+      <span class="eyebrow">alquileres e índices · Argentina</span>
+    </div>
+  </header>
+
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi"><div class="k">Cargando</div><div class="v-row"><span class="v">…</span></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Calculadora de ajuste de alquiler</h2>
+    <div class="field">
+      <label>Índice del contrato</label>
+      <select id="indice">
+        <option value="icl">ICL (Índice de Contratos de Locación, BCRA)</option>
+        <option value="uva">UVA (Unidad de Valor Adquisitivo, BCRA)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Alquiler actual</label>
+      <input type="number" id="alquilerActual" placeholder="ej: 350000" min="0">
+    </div>
+    <div class="field">
+      <label>Fecha de inicio del contrato o del último ajuste</label>
+      <input type="month" id="fechaInicio">
+    </div>
+    <button class="btn" onclick="calcularAjuste()">Calcular nuevo alquiler</button>
+
+    <div class="result-box" id="resultBox" style="display:none;">
+      <div class="result-row"><span>Índice al inicio</span><span class="val mono" id="rIndiceInicio">—</span></div>
+      <div class="result-row"><span>Índice actual</span><span class="val mono" id="rIndiceActual">—</span></div>
+      <div class="result-row"><span>Variación acumulada</span><span class="val mono" id="rVariacion">—</span></div>
+      <div class="result-row"><span>Nuevo alquiler</span><span class="val mono" id="rNuevoAlquiler">—</span></div>
+    </div>
+    <div class="loading" id="calcWarning" style="display:none; color:var(--red);"></div>
+  </div>
+
+  <footer>
+    Fuente: <b>ArgentinaDatos API</b> (histórico de ICL y UVA, tomado del BCRA). Esta calculadora es orientativa — para el cálculo exacto de tu contrato, confirmá el índice y la fecha pactada en el propio contrato de alquiler.
+  </footer>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+let iclHist = [], uvaHist = [];
+
+async function cargarIndices(){
+  try{
+    const [icl, uva] = await Promise.all([
+      fetch('https://api.argentinadatos.com/v1/finanzas/indices/icl').then(r=>r.ok?r.json():[]).catch(()=>[]),
+      fetch('https://api.argentinadatos.com/v1/finanzas/indices/uva').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    ]);
+    iclHist = [...icl].sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    uvaHist = [...uva].sort((a,b)=>a.fecha.localeCompare(b.fecha));
+
+    const tiles = [];
+    if(iclHist.length){ const last = iclHist[iclHist.length-1]; tiles.push({k:'ICL hoy', v:fmt(last.valor,2), sub:last.fecha}); }
+    if(uvaHist.length){ const last = uvaHist[uvaHist.length-1]; tiles.push({k:'UVA hoy', v:'$'+fmt(last.valor,2), sub:last.fecha}); }
+    $('kpiGrid').innerHTML = tiles.length ? tiles.map(t=>`<div class="kpi"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub}</div></div>`).join('') : '<div class="loading">No se pudieron cargar los índices.</div>';
+  }catch(e){ console.error(e); }
+}
+
+function valorMasCercano(hist, fechaBuscada){
+  // Busca el valor del índice más cercano (hacia atrás) a una fecha dada,
+  // ya que ICL/UVA no siempre tienen un registro exacto para el día 1 del mes.
+  if(!hist.length) return null;
+  const candidatos = hist.filter(h => h.fecha <= fechaBuscada);
+  return candidatos.length ? candidatos[candidatos.length-1] : hist[0];
+}
+
+function calcularAjuste(){
+  const indice = $('indice').value;
+  const alquiler = parseFloat($('alquilerActual').value);
+  const fechaInicio = $('fechaInicio').value; // YYYY-MM
+  if(!alquiler || alquiler<=0 || !fechaInicio){ alert('Completá el alquiler y la fecha de inicio.'); return; }
+
+  const hist = indice==='icl' ? iclHist : uvaHist;
+  if(!hist.length){ $('calcWarning').style.display='block'; $('calcWarning').textContent='No hay datos del índice cargados todavía.'; return; }
+
+  const inicio = valorMasCercano(hist, fechaInicio+'-28');
+  const actual = hist[hist.length-1];
+  if(!inicio || !actual){ $('calcWarning').style.display='block'; $('calcWarning').textContent='No se encontró el índice para esa fecha.'; return; }
+
+  const variacion = ((actual.valor - inicio.valor)/inicio.valor)*100;
+  const nuevoAlquiler = alquiler * (actual.valor/inicio.valor);
+
+  $('rIndiceInicio').textContent = fmt(inicio.valor,2) + ' (' + inicio.fecha + ')';
+  $('rIndiceActual').textContent = fmt(actual.valor,2) + ' (' + actual.fecha + ')';
+  $('rVariacion').textContent = (variacion>=0?'+':'') + fmt(variacion,1) + '%';
+  $('rNuevoAlquiler').textContent = '$' + fmt(nuevoAlquiler,0);
+  $('resultBox').style.display = 'block';
+  $('calcWarning').style.display = 'none';
+}
+
+cargarIndices();
+</script>
+</body>
+</html>

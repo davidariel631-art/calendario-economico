@@ -23,7 +23,8 @@
     min-height:100vh; padding:16px; font-size:14px;
   }
   .mono{font-family: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums;}
-  .wrap{max-width:1240px;margin:0 auto;}
+  .wrap{max-width:1240px;margin:0 auto; animation:fadeIn .35s cubic-bezier(.22,.9,.32,1);}
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
 
   header{display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px;}
   .brand{display:flex; align-items:baseline; gap:10px;}
@@ -48,13 +49,14 @@
   .kpi .v{font-size:19px; font-weight:800;}
   .kpi.st-green .v{color:var(--green);} .kpi.st-red .v{color:var(--red);} .kpi.st-amber .v{color:var(--amber);}
   .kpi .sub{font-size:9.5px; color:var(--dim); margin-top:2px;}
+  .kpi .exp{font-size:10px; color:var(--chalk); margin-top:5px; padding-top:5px; border-top:1px dashed var(--line); line-height:1.35;}
 
   .grid{display:grid; grid-template-columns:1.5fr 1fr; gap:12px;}
   @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
 
   .panel{background:linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 260%); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:12px; transition:border-color .2s ease, box-shadow .2s ease; box-shadow:0 6px 18px -12px rgba(0,0,0,.6);}
   .panel:hover{border-color:#3a4b50; box-shadow:0 10px 24px -12px rgba(0,0,0,.65);}
-  .panel h2{margin:0 0 8px 0; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--celeste); display:flex; align-items:center; justify-content:space-between;}
+  .panel h2{margin:0 0 8px 0; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--celeste); display:flex; align-items:center; justify-content:space-between; padding-left:10px; border-left:3px solid var(--celeste);}
   .panel h2 small{color:var(--dim); font-weight:400; letter-spacing:0; text-transform:none; font-size:10px;}
 
   /* ---------- INTERACTIVE EVENT CARDS ---------- */
@@ -162,14 +164,21 @@
   footer{margin-top:6px; padding-top:10px; border-top:1px solid var(--line); font-size:9.5px; color:var(--dim); line-height:1.6;}
   footer b{color:var(--chalk);}
 
-  .topnav{display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid var(--line); padding-bottom:0; flex-wrap:wrap;}
+  .topnav{display:flex; gap:2px; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:0; flex-wrap:wrap;}
   .topnav a{
-    font-size:11.5px; letter-spacing:.04em; color:var(--dim); text-decoration:none;
-    padding:8px 12px; border-bottom:2px solid transparent; transition:color .15s ease, border-color .15s ease;
+    position:relative; font-size:11.5px; letter-spacing:.04em; color:var(--dim); text-decoration:none;
+    padding:9px 13px; transition:color .18s ease;
+  }
+  .topnav a::after{
+    content:''; position:absolute; left:13px; right:13px; bottom:-1px; height:2px;
+    background:var(--celeste); transform:scaleX(0); transform-origin:center;
+    transition:transform .22s cubic-bezier(.22,.9,.32,1);
   }
   .topnav a:hover{color:var(--chalk);}
-  .topnav a.active{color:var(--celeste); border-bottom-color:var(--celeste); font-weight:700;}
-  .topnav a.disabled{color:#4a5659; cursor:default; pointer-events:none;}
+  .topnav a:hover::after{transform:scaleX(.35);}
+  .topnav a.active{color:var(--celeste); font-weight:700;}
+  .topnav a.active::after{transform:scaleX(1);}
+  .topnav a.disabled{color:#465155; cursor:default; pointer-events:none;}
   .tag-proximamente{
     font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim);
     background:var(--bg-2); border:1px solid var(--line); border-radius:3px; padding:1px 6px;
@@ -212,8 +221,8 @@
     <a href="index.html" class="active">Dashboard</a>
     <a href="transporte.html">Transporte</a>
     <a href="#" class="disabled" title="Próximamente">Consumo</a>
-    <a href="#" class="disabled" title="Próximamente">Hogar</a>
-    <a href="#" class="disabled" title="Próximamente">Finanzas</a>
+    <a href="hogar.html">Hogar</a>
+    <a href="finanzas.html">Finanzas</a>
     <a href="#" class="disabled" title="Próximamente">Calendario</a>
   </nav>
 
@@ -572,13 +581,18 @@ async function loadEMAE(){
 
 function dolarTile(k, casaKey, obj){
   const ayer = ayerVenta(casaKey);
-  let sub = 'venta', st = 'st-amber';
+  let sub = 'venta', st = 'st-amber', exp = '';
   if(ayer!==null && ayer>0){
     const delta = obj.venta - ayer;
     st = delta>0.5?'st-red':delta<-0.5?'st-green':'st-amber';
     sub = Math.abs(delta)<0.5 ? 'sin cambios vs. ayer' : `${arrow(delta)} ${delta>0?'subió':'bajó'} $${fmt(Math.abs(delta),0)} vs. ayer`;
+    if(casaKey==='blue' || casaKey==='bolsa'){
+      exp = Math.abs(delta)<0.5 ? '' : (delta>0
+        ? 'Si necesitás comprar, hoy sale más caro que ayer.'
+        : 'Si necesitás comprar dólares, hoy es mejor momento que ayer.');
+    }
   }
-  return {k, v:'$'+fmt(obj.venta), st, sub};
+  return {k, v:'$'+fmt(obj.venta), st, sub, exp};
 }
 function renderKPIs(){
   const tiles = []; const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
@@ -588,17 +602,22 @@ function renderKPIs(){
   if(byCasa.contadoconliqui) tiles.push(dolarTile('Dólar CCL','contadoconliqui',byCasa.contadoconliqui));
   if(byCasa.oficial && byCasa.blue){
     const brecha = ((byCasa.blue.venta - byCasa.oficial.venta)/byCasa.oficial.venta)*100;
-    tiles.push({k:'Brecha blue/oficial', v:fmt(brecha,1)+'%', st: brecha>30?'st-red':brecha>10?'st-amber':'st-green', sub:'oficial vs. blue'});
+    const st = brecha>30?'st-red':brecha>10?'st-amber':'st-green';
+    tiles.push({k:'Brecha blue/oficial', v:fmt(brecha,1)+'%', st, sub:'oficial vs. blue',
+      exp: brecha>30 ? 'Brecha alta: señal de desconfianza en el dólar oficial.' : brecha<10 ? 'Brecha baja: el mercado ve el dólar oficial como razonable.' : ''});
   }
   if(STATE.riesgo){
     const hist = STATE.riesgoHist||[]; const prev = hist.length>1?hist[hist.length-2].valor:null;
     const delta = prev!==null? STATE.riesgo.valor-prev : null;
-    tiles.push({k:'Riesgo país', v:fmt(STATE.riesgo.valor,0)+' pb', st:statusClass(delta), sub: delta!==null?(arrow(delta)+' '+fmt(Math.abs(delta),0)+' pb'):''});
+    const st = statusClass(delta);
+    tiles.push({k:'Riesgo país', v:fmt(STATE.riesgo.valor,0)+' pb', st, sub: delta!==null?(arrow(delta)+' '+fmt(Math.abs(delta),0)+' pb'):'',
+      exp: st==='st-red' ? 'Sube: el mercado le exige más interés a Argentina para prestarle.' : st==='st-green' ? 'Baja: mejora la confianza para que el país consiga crédito más barato.' : ''});
   }
   if(STATE.inflMensual && STATE.inflMensual.length){
     const last = STATE.inflMensual[STATE.inflMensual.length-1]; const prev = STATE.inflMensual[STATE.inflMensual.length-2];
     const delta = prev? last.valor-prev.valor : null;
-    tiles.push({k:'IPC mensual', v:fmt(last.valor,1)+'%', st:statusClass(delta,0.05), sub:fmtDate(last.fecha)});
+    tiles.push({k:'IPC mensual', v:fmt(last.valor,1)+'%', st:statusClass(delta,0.05), sub:fmtDate(last.fecha),
+      exp: 'Cuánto subieron en promedio los precios este mes.'});
   }
   if(STATE.inflInteranual && STATE.inflInteranual.length){
     const last = STATE.inflInteranual[STATE.inflInteranual.length-1];
@@ -609,9 +628,9 @@ function renderKPIs(){
     tiles.push({k:'UVA', v:'$'+fmt(last.valor,2), st:'', sub:'créditos y alquileres UVA · '+fmtDate(last.fecha)});
   }
   if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):'fuente: Argly'}); }
-  if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'fuente: Argly'}); }
-  if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'fuente: Argly'}); }
-  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div></div>`).join('');
+  if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'fuente: Argly', exp:'Lo mínimo para no caer en indigencia (una persona).'}); }
+  if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'fuente: Argly', exp:'Lo mínimo para no caer en pobreza (una persona).'}); }
+  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div>${t.exp?`<div class="exp">${t.exp}</div>`:''}</div>`).join('');
 }
 
 function renderResumen(){
