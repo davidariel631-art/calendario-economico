@@ -162,6 +162,19 @@
   footer{margin-top:6px; padding-top:10px; border-top:1px solid var(--line); font-size:9.5px; color:var(--dim); line-height:1.6;}
   footer b{color:var(--chalk);}
 
+  .topnav{display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid var(--line); padding-bottom:0; flex-wrap:wrap;}
+  .topnav a{
+    font-size:11.5px; letter-spacing:.04em; color:var(--dim); text-decoration:none;
+    padding:8px 12px; border-bottom:2px solid transparent; transition:color .15s ease, border-color .15s ease;
+  }
+  .topnav a:hover{color:var(--chalk);}
+  .topnav a.active{color:var(--celeste); border-bottom-color:var(--celeste); font-weight:700;}
+  .topnav a.disabled{color:#4a5659; cursor:default; pointer-events:none;}
+  .tag-proximamente{
+    font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim);
+    background:var(--bg-2); border:1px solid var(--line); border-radius:3px; padding:1px 6px;
+  }
+
   /* ---------- MOBILE ---------- */
   @media (max-width:640px){
     body{padding:10px; font-size:13px;}
@@ -194,6 +207,15 @@
 </head>
 <body>
 <div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html" class="active">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="#" class="disabled" title="Próximamente">Consumo</a>
+    <a href="#" class="disabled" title="Próximamente">Hogar</a>
+    <a href="#" class="disabled" title="Próximamente">Finanzas</a>
+    <a href="#" class="disabled" title="Próximamente">Calendario</a>
+  </nav>
 
   <header>
     <div class="brand">
@@ -481,6 +503,38 @@ async function loadUVA(){
   return STATE.uva;
 }
 
+// ---------- Argly: SMVM, Canasta Básica Alimentaria y Total ----------
+// Argly (api.argly.com.ar) es gratis, sin auth, mantenido por un solo dev.
+// Como no expone el JSON de ejemplo sin correr su Playground en el
+// navegador, buscamos el valor probando varios nombres de campo posibles
+// en vez de asumir uno — si ninguno matchea, no se inventa nada.
+function arglyPickNumber(obj, candidatos){
+  if(!obj || typeof obj !== 'object') return null;
+  for(const key of candidatos){
+    if(typeof obj[key] === 'number') return obj[key];
+    if(typeof obj[key] === 'string' && !isNaN(parseFloat(obj[key]))) return parseFloat(obj[key]);
+  }
+  return null;
+}
+function arglyPickString(obj, candidatos){
+  if(!obj || typeof obj !== 'object') return null;
+  for(const key of candidatos){ if(typeof obj[key] === 'string') return obj[key]; }
+  return null;
+}
+async function loadArglyIndicador(endpoint, stateKey, candidatosValor, candidatosFecha){
+  try{
+    const d = await fetchJsonRetry(`https://api.argly.com.ar/v1/${endpoint}`, {retries:1});
+    const valor = arglyPickNumber(d, candidatosValor);
+    const fecha = arglyPickString(d, candidatosFecha) || null;
+    STATE[stateKey] = valor!==null ? {valor, fecha} : null;
+    STATE.errors[stateKey] = null;
+  }catch(e){ STATE.errors[stateKey] = e.message; STATE[stateKey] = null; }
+  return STATE[stateKey];
+}
+const loadSMVM = () => loadArglyIndicador('smvm', 'smvm', ['valor','value','monto'], ['fecha','date','periodo']);
+const loadCBA  = () => loadArglyIndicador('cba',  'cba',  ['valor','value','monto'], ['fecha','date','periodo']);
+const loadCBT  = () => loadArglyIndicador('cbt',  'cbt',  ['valor','value','monto'], ['fecha','date','periodo']);
+
 // REM (Relevamiento de Expectativas de Mercado): SÍ tiene API real y
 // gratuita en ArgentinaDatos. El informe trae varios "indicador" distintos
 // (inflación mensual, interanual, tipo de cambio, etc.) — filtramos el de
@@ -554,6 +608,9 @@ function renderKPIs(){
     const last = STATE.uva[STATE.uva.length-1];
     tiles.push({k:'UVA', v:'$'+fmt(last.valor,2), st:'', sub:'créditos y alquileres UVA · '+fmtDate(last.fecha)});
   }
+  if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):'fuente: Argly'}); }
+  if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'fuente: Argly'}); }
+  if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'fuente: Argly'}); }
   $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div></div>`).join('');
 }
 
@@ -958,6 +1015,9 @@ function renderDiagnostico(){
     {k:'uva', label:'UVA'},
     {k:'rem', label:'REM'},
     {k:'emae', label:'EMAE'},
+    {k:'smvm', label:'SMVM (Argly)'},
+    {k:'cba', label:'CBA (Argly)'},
+    {k:'cbt', label:'CBT (Argly)'},
   ];
   $('diagBox').innerHTML = sources.map(s=>{
     const err = STATE.errors[s.k];
@@ -968,7 +1028,7 @@ function renderDiagnostico(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCBA(), loadCBT()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});

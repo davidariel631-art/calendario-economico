@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transporte — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<style>
+  .fuel-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:6px;}
+  .fuel-card{background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:12px;}
+  .fuel-card .name{font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;}
+  .fuel-card .price{font-size:22px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums;}
+  .fuel-card .note{font-size:9.5px; color:var(--dim); margin-top:3px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html" class="active">Transporte</a>
+    <a href="#" class="disabled" title="Próximamente">Consumo</a>
+    <a href="#" class="disabled" title="Próximamente">Hogar</a>
+    <a href="#" class="disabled" title="Próximamente">Finanzas</a>
+    <a href="#" class="disabled" title="Próximamente">Calendario</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>TRANSPORTE</h1>
+      <span class="eyebrow">precios de combustible · Argentina</span>
+    </div>
+  </header>
+
+  <div class="panel">
+    <h2>Precios promedio de combustible <small id="fuelSub"></small></h2>
+    <div class="fuel-grid" id="fuelGrid">
+      <div class="loading">Cargando precios…</div>
+    </div>
+    <div class="loading" id="fuelWarning" style="display:none; color:var(--red);"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Calculadora: llenar el tanque</h2>
+    <div class="field">
+      <label>Tipo de combustible</label>
+      <select id="tipoCombustible">
+        <option value="super">Nafta Súper</option>
+        <option value="premium">Nafta Premium</option>
+        <option value="gasoil">Gasoil</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Litros a cargar</label>
+      <input type="number" id="litros" placeholder="ej: 40" min="0" step="0.1">
+    </div>
+    <button class="btn" onclick="calcularTanque()">Calcular</button>
+
+    <div class="result-box" id="resultBox" style="display:none;">
+      <div class="result-row"><span>Costo estimado hoy</span><span class="val mono" id="rCostoHoy">—</span></div>
+      <div class="result-row"><span>Precio promedio usado</span><span class="val mono" id="rPrecioUsado">—</span></div>
+      <div class="result-row"><span>Muestras promediadas</span><span class="val mono" id="rMuestras">—</span></div>
+    </div>
+  </div>
+
+  <footer>
+    Fuente: <b>Argly</b> (api.argly.com.ar), que sincroniza precios de combustible por provincia y estación de servicio.
+    El precio mostrado es un <b>promedio simple</b> de las estaciones disponibles — puede variar según provincia y bandera.
+  </footer>
+
+</div>
+
+<script src="assets/js/common.js"></script>
+<script src="assets/js/argly.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let combustiblesData = null;
+let promedios = {};
+
+async function init(){
+  try{
+    combustiblesData = await getCombustibles();
+    if(!combustiblesData){
+      $('fuelGrid').innerHTML = '<div class="loading">No se pudo leer el precio de combustibles ahora mismo.</div>';
+      $('fuelWarning').style.display = 'block';
+      $('fuelWarning').textContent = 'Argly no devolvió datos de combustibles en este momento. Reintentá recargando la página en unos minutos.';
+      return;
+    }
+
+    promedios.super   = promedioCombustible(combustiblesData, /s[uú]per/i);
+    promedios.premium = promedioCombustible(combustiblesData, /premium|infinia|v-?power|ultra/i);
+    promedios.gasoil   = promedioCombustible(combustiblesData, /gasoil|diesel|di[eé]sel/i);
+
+    const nombres = {super:'Nafta Súper', premium:'Nafta Premium', gasoil:'Gasoil'};
+    let html = '';
+    let algunaFalta = false;
+    for(const key of ['super','premium','gasoil']){
+      const p = promedios[key];
+      if(p){
+        html += `<div class="fuel-card">
+          <div class="name">${nombres[key]}</div>
+          <div class="price mono">$${fmt(p.valor,1)}</div>
+          <div class="note">promedio de ${p.muestras} estaciones</div>
+        </div>`;
+      } else {
+        algunaFalta = true;
+        html += `<div class="fuel-card">
+          <div class="name">${nombres[key]}</div>
+          <div class="price mono">—</div>
+          <div class="note">sin datos para este tipo</div>
+        </div>`;
+      }
+    }
+    $('fuelGrid').innerHTML = html;
+    $('fuelSub').textContent = `${combustiblesData.length} estaciones relevadas`;
+    if(algunaFalta){
+      $('fuelWarning').style.display = 'block';
+      $('fuelWarning').textContent = 'Algunos tipos de combustible no se pudieron identificar en la respuesta de Argly — puede que el nombre del producto no coincida con lo esperado. No se muestra un precio inventado para esos casos.';
+    }
+  }catch(e){
+    $('fuelGrid').innerHTML = '<div class="loading">Error al cargar combustibles.</div>';
+    console.error(e);
+  }
+}
+
+function calcularTanque(){
+  const tipo = $('tipoCombustible').value;
+  const litros = parseFloat($('litros').value);
+  if(!litros || litros <= 0){ alert('Ingresá una cantidad de litros válida.'); return; }
+
+  const p = promedios[tipo];
+  if(!p){
+    alert('No tenemos precio disponible para ese combustible en este momento.');
+    return;
+  }
+
+  const costo = litros * p.valor;
+  $('rCostoHoy').textContent = '$' + fmt(costo, 0);
+  $('rPrecioUsado').textContent = '$' + fmt(p.valor, 1) + ' / litro';
+  $('rMuestras').textContent = p.muestras + ' estaciones';
+  $('resultBox').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>
