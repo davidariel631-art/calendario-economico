@@ -332,31 +332,34 @@ const FIRESTORE_KEY_MAP = {
 // reciente dentro de la subcolección "historico" (fallback real, no un
 // invento) — así, aunque el dato de ESTE mes no esté cargado todavía, el
 // panel muestra el dato real más reciente que sí tenemos, con su fecha.
-async function fetchIndicadorConFallback(fsKey){
-  if(!fsDb) return null;
+// Trae los últimos períodos del histórico de un indicador (no solo el
+// último), para que cada tarjeta del calendario (jul, ago, sep...) pueda
+// mostrar SU PROPIO dato real en vez de repetir siempre el mismo número.
+async function fetchHistoricoReciente(fsKey, cantidad=6){
+  if(!fsDb) return [];
   try{
-    const docRef = fsDb.collection('indicadores').doc(fsKey);
-    const snap = await docRef.get();
-    if(snap.exists && snap.data().ultimo) return {...snap.data().ultimo, esFallbackHistorico:false};
-
-    // No hay "ultimo" -> buscamos el más reciente del historico.
-    const histSnap = await docRef.collection('historico')
+    const snap = await fsDb.collection('indicadores').doc(fsKey)
+      .collection('historico')
       .orderBy(firebase.firestore.FieldPath.documentId(), 'desc')
-      .limit(1).get();
-    if(!histSnap.empty) return {...histSnap.docs[0].data(), esFallbackHistorico:true};
+      .limit(cantidad).get();
+    return snap.docs.map(d => ({periodo: d.id, ...d.data()}));
   }catch(e){
-    console.warn('Firestore: no se pudo leer', fsKey, e.message);
+    console.warn('Firestore: no se pudo leer histórico de', fsKey, e.message);
+    return [];
   }
-  return null;
 }
 
 async function loadIndicadoresFirestore(){
   if(!fsDb) return {};
   const out = {};
+  const historico = {};
   await Promise.all(Object.values(FIRESTORE_KEY_MAP).map(async fsKey=>{
-    out[fsKey] = await fetchIndicadorConFallback(fsKey);
+    const lista = await fetchHistoricoReciente(fsKey);
+    historico[fsKey] = lista; // ya viene ordenado de más nuevo a más viejo
+    out[fsKey] = lista[0] ? {...lista[0], esFallbackHistorico: false} : null;
   }));
   STATE.firestore = out;
+  STATE.firestoreHistorico = historico;
   return out;
 }
 
@@ -365,9 +368,9 @@ async function loadIndicadoresFirestore(){
 // - el que escribe la carga manual (valor + unidad)
 function extractValorUnidad(doc){
   if(!doc) return null;
-  if(typeof doc.valor === 'number') return {valor: doc.valor, unidad: doc.unidad || '', fecha: doc.fecha, esFallbackHistorico: !!doc.esFallbackHistorico};
-  if(typeof doc.valorMillonesUSD === 'number') return {valor: doc.valorMillonesUSD, unidad: 'M USD', fecha: doc.fecha, esFallbackHistorico: !!doc.esFallbackHistorico};
-  if(typeof doc.valorPorcentaje === 'number') return {valor: doc.valorPorcentaje, unidad: '%', fecha: doc.fecha, esFallbackHistorico: !!doc.esFallbackHistorico};
+  if(typeof doc.valor === 'number') return {valor: doc.valor, unidad: doc.unidad || '', fecha: doc.fecha || doc.periodo, esFallbackHistorico: !!doc.esFallbackHistorico};
+  if(typeof doc.valorMillonesUSD === 'number') return {valor: doc.valorMillonesUSD, unidad: 'M USD', fecha: doc.fecha || doc.periodo, esFallbackHistorico: !!doc.esFallbackHistorico};
+  if(typeof doc.valorPorcentaje === 'number') return {valor: doc.valorPorcentaje, unidad: '%', fecha: doc.fecha || doc.periodo, esFallbackHistorico: !!doc.esFallbackHistorico};
   return null;
 }
 
@@ -687,13 +690,27 @@ function buildScheduleForMonth(year, monthIdx){
 // y reemplaza automáticamente a la semilla.
 const SEED_DATA = {
   reservas_bcra: { valor: 48722, unidad: 'M USD', fecha: '2026-07-09',
-    fuente: 'dato inicial provisto por vos — el scraper del BCRA lo va a ir actualizando solo' },
-  recaudacion: { valor: 20017104, unidad: 'Millones de $', fecha: '2026-06',
-    fuente: 'dato inicial provisto por vos (ARCA, junio 2026) — cargá el próximo mes desde admin-carga.html' },
+    fuente: 'dato inicial — el scraper del BCRA lo actualiza solo' },
   rem_ipc_esperado: { valor: 2.0, unidad: '%', fecha: '2026-06',
-    fuente: 'dato inicial provisto por vos (REM, esperado junio 2026) — cargá el próximo mes desde admin-carga.html' },
+    fuente: 'red de seguridad — el REM real ahora viene en vivo (ver loadREM)' },
   emae: { valor: 1.6, unidad: '%', fecha: '2026-04',
-    fuente: 'dato inicial provisto por vos (INDEC, abril 2026, con el rezago natural del EMAE) — cargá el próximo mes desde admin-carga.html' },
+    fuente: 'red de seguridad — el EMAE real ahora viene en vivo (ver loadEMAE)' },
+  // Recaudación y Resultado fiscal: los 2 únicos sin fuente automática.
+  // Guardamos 2 períodos (más reciente primero) para que "Anterior" muestre
+  // algo real incluso antes de que cargues tu primer dato en admin-carga.html.
+  // En cuanto Firestore tenga datos de verdad, ESTO deja de usarse.
+  recaudacion: [
+    { valor: 20017104, unidad: 'Millones de $', fecha: '2026-06',
+      fuente: 'ARCA, junio 2026 (dato de referencia inicial)' },
+    { valor: 21513000, unidad: 'Millones de $', fecha: '2026-05',
+      fuente: 'ARCA, mayo 2026 (dato de referencia inicial)' },
+  ],
+  resultado_fiscal: [
+    { valor: 1924367, unidad: 'Millones de $', fecha: '2026-05',
+      fuente: 'Hacienda, superávit primario mayo 2026 (dato de referencia inicial)' },
+    { valor: 633000, unidad: 'Millones de $', fecha: '2026-04',
+      fuente: 'Hacienda, superávit primario abril 2026 (dato de referencia inicial)' },
+  ],
 };
 
 // "Esperado (REM)" para el IPC: primero el REM real (API en vivo);
@@ -773,29 +790,57 @@ function resolveColumns(key, eventDate){
       : { anterior:'—', esperado:'—', actual:'—', actualPending:false, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
   }
 
-  // Los únicos 3 que de verdad no tienen ninguna API pública gratuita en
-  // Argentina hoy: Recaudación (ARCA), Resultado fiscal (Hacienda) y Balance
-  // cambiario (BCRA). Para estos, admin-carga.html sigue siendo la única
-  // fuente de verdad. Prioridad: dato de este período > último del histórico
-  // > semilla inicial > nada.
+  // Los únicos 2 que de verdad no tienen ninguna fuente automatizable
+  // confiable hoy: Recaudación (ARCA) y Resultado fiscal (Hacienda).
+  // Balance cambiario y Reservas ya son automáticos (scraper).
+  // admin-carga.html / el scraper escriben un doc por PERÍODO en
+  // "historico/{YYYY-MM}" — cada tarjeta busca el suyo, así la de julio y
+  // la de agosto no muestran más el mismo número repetido.
   const fsKey = FIRESTORE_KEY_MAP[key];
-  const doc = STATE.firestore?.[fsKey] || SEED_DATA[fsKey];
-  const isSeed = !STATE.firestore?.[fsKey] && !!SEED_DATA[fsKey];
-  const v = extractValorUnidad(doc);
+  const periodoEvento = `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}`;
+  const historico = STATE.firestoreHistorico?.[fsKey] || [];
 
+  // Buscamos el dato específico de ESTE mes. "periodo" es el ID del doc
+  // (YYYY-MM); si el scraper guarda fechas diarias (YYYY-MM-DD), comparamos
+  // por prefijo de año-mes.
+  const idxEventos = historico.findIndex(h => (h.periodo||'').startsWith(periodoEvento));
+  let doc, esDatoViejo, docAnterior;
+
+  if(idxEventos !== -1){
+    doc = historico[idxEventos];
+    docAnterior = historico[idxEventos+1] || null;
+    esDatoViejo = false; // es el dato real de ESTE período
+  } else {
+    // Todavía no hay dato cargado para el mes de esta tarjeta puntual.
+    // Si es un mes futuro, es lógico que no haya nada -> Pendiente.
+    // Si ya pasó y seguimos sin nada, mostramos el último real disponible
+    // (o la semilla) aclarando que es de otro mes.
+    const today = new Date(); today.setHours(0,0,0,0);
+    if(eventDate > today){
+      const previo = historico[0] || (Array.isArray(SEED_DATA[fsKey]) ? SEED_DATA[fsKey][0] : SEED_DATA[fsKey]);
+      const vPrevio = extractValorUnidad(previo);
+      const anteriorPreview = vPrevio ? `${fmt(vPrevio.valor, vPrevio.unidad==='%'?1:0)} ${vPrevio.unidad}`.trim() : 's/d';
+      return { anterior: anteriorPreview,
+        esperado:'s/d', actual:null, actualPending:true, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
+    }
+    doc = historico[0] || (Array.isArray(SEED_DATA[fsKey]) ? SEED_DATA[fsKey][0] : SEED_DATA[fsKey]);
+    docAnterior = historico[1] || (Array.isArray(SEED_DATA[fsKey]) ? SEED_DATA[fsKey][1] : null);
+    esDatoViejo = !!doc;
+  }
+
+  const v = extractValorUnidad(doc);
   if(!v){
     return { anterior:'—', esperado:'—', actual:'—', actualPending:false, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
   }
 
   const decimales = v.unidad === '%' ? 1 : 0;
-  const fechaLabel = v.fecha ? fmtDate(v.fecha+(v.fecha.length===7?'-01':'')) : '—';
+  const fechaLabel = v.fecha ? fmtDate(v.fecha.length===7 ? v.fecha+'-01' : v.fecha) : '—';
   const valorTexto = `${fmt(v.valor, decimales)} ${v.unidad}`.trim();
-  // Si el dato viene del histórico (no hay "ultimo" fresco) o es la semilla,
-  // lo mostramos igual — pero con la fecha real al lado, nunca "Pendiente".
-  const esDatoViejo = v.esFallbackHistorico || isSeed;
+  const vAnterior = extractValorUnidad(docAnterior);
+  const anteriorTexto = vAnterior ? `${fmt(vAnterior.valor, decimales)} ${vAnterior.unidad}`.trim() : 's/d';
 
   return {
-    anterior: 's/d',
+    anterior: anteriorTexto,
     esperado: 's/d',
     actual: valorTexto,
     actualPending: false,
@@ -805,7 +850,7 @@ function resolveColumns(key, eventDate){
     compareLabel: '',
     actualRaw: v.valor,
     historial: [{
-      label: fechaLabel + (isSeed ? ' (dato inicial)' : v.esFallbackHistorico ? ' (último cargado)' : ''),
+      label: fechaLabel + (esDatoViejo ? ' (dato de otro mes)' : ''),
       value: valorTexto,
     }],
   };
