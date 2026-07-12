@@ -308,14 +308,16 @@ if(typeof firebase !== 'undefined'){
 // LISTA OFICIAL DE KEYS DE FIRESTORE (indicadores/{key})
 // admin-carga.html tiene que escribir EXACTAMENTE en estos IDs,
 // o el dashboard no los va a encontrar:
-//   - reservas_bcra       (lo escribe el scraper del BCRA, no se carga a mano)
-//   - recaudacion         (carga manual)
-//   - emae                (carga manual)
-//   - resultado_fiscal    (carga manual)
-//   - cambiario           (carga manual)
-//   - rem_ipc_esperado    (carga manual — también alimenta "Esperado" del IPC)
+//   - reservas_bcra       (scraper — API oficial BCRA)
+//   - cambiario           (scraper — scraping del informe HTML mensual BCRA)
+//   - recaudacion         (carga manual — no tiene fuente automatizable confiable)
+//   - resultado_fiscal    (carga manual — no tiene fuente automatizable confiable)
+//   - rem_ipc_esperado    (red de seguridad; el REM real ahora viene en vivo, ver loadREM)
 // Cada doc tiene: { ultimo: {...} } y una subcolección historico/{fecha}.
 // ============================================================
+// EMAE y REM ahora tienen fuente en vivo propia (ver loadEMAE/loadREM) y
+// resolveColumns los intercepta antes de llegar acá — estas dos entradas
+// quedan solo como red de seguridad por si esas APIs fallan algún día.
 const FIRESTORE_KEY_MAP = {
   reservas: 'reservas_bcra',
   recaudacion: 'recaudacion',
@@ -446,7 +448,7 @@ async function loadInflacion(){
   try{
     const [mensual, interanual] = await Promise.all([
       fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacion'),
-      fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacion-interanual')
+      fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacionInteranual')
     ]);
     STATE.inflMensual = mensual; STATE.inflInteranual = interanual;
     STATE.errors.inflacion = null;
@@ -472,6 +474,41 @@ async function loadUVA(){
     STATE.errors.uva = null;
   }catch(e){ STATE.errors.uva = e.message; /* no crítico */ }
   return STATE.uva;
+}
+
+// REM (Relevamiento de Expectativas de Mercado): SÍ tiene API real y
+// gratuita en ArgentinaDatos. El informe trae varios "indicador" distintos
+// (inflación mensual, interanual, tipo de cambio, etc.) — filtramos el de
+// inflación mensual, que es el que alimenta la columna "Esperado (REM)".
+async function loadREM(){
+  try{
+    const data = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/rem/ultimo', {retries:1});
+    const inflacionMensual = (data||[])
+      .filter(d => /inflaci[oó]n mensual/i.test(d.indicador||''))
+      .sort((a,b) => (a.periodoDesde||'').localeCompare(b.periodoDesde||''));
+    STATE.remIpc = inflacionMensual[0] || null; // la expectativa del período más cercano
+    STATE.errors.rem = null;
+  }catch(e){ STATE.errors.rem = e.message; STATE.remIpc = null; }
+  return STATE.remIpc;
+}
+
+// EMAE: no tiene API en ArgentinaDatos (es de INDEC, no de BCRA), pero SÍ
+// existe en la API oficial de Series de Tiempo del Gobierno
+// (apis.datos.gob.ar), que mira estos mismos datos de INDEC. Serie:
+// "143.3_NO_PR_2004_A_21" (EMAE, base 2004), con la transformación
+// "percent_change_a_year_ago" pedida directamente a la API para que
+// devuelva la variación interanual en % (que es como se suele leer el EMAE),
+// sin que tengamos que calcularla nosotros.
+async function loadEMAE(){
+  try{
+    const url = 'https://apis.datos.gob.ar/series/api/series/?ids=143.3_NO_PR_2004_A_21:percent_change_a_year_ago&format=json&sort=desc&limit=6';
+    const json = await fetchJsonRetry(url, {retries:1});
+    const rows = json?.data || [];
+    // Cada fila: [fecha, valor]. Vienen ordenadas de más nueva a más vieja.
+    STATE.emae = rows.map(r => ({fecha: r[0], valor: r[1]})).filter(r => typeof r.valor === 'number');
+    STATE.errors.emae = null;
+  }catch(e){ STATE.errors.emae = e.message; STATE.emae = null; }
+  return STATE.emae;
 }
 
 function dolarTile(k, casaKey, obj){
@@ -659,7 +696,11 @@ const SEED_DATA = {
     fuente: 'dato inicial provisto por vos (INDEC, abril 2026, con el rezago natural del EMAE) — cargá el próximo mes desde admin-carga.html' },
 };
 
+// "Esperado (REM)" para el IPC: primero el REM real (API en vivo);
+// si por algo falla, cae al dato cargado a mano / semilla, como red de
+// seguridad — pero ya no depende de eso en el día a día.
 function remInflacionEsperada(){
+  if(STATE.remIpc && typeof STATE.remIpc.mediana === 'number') return STATE.remIpc.mediana;
   const doc = STATE.firestore?.rem_ipc_esperado || SEED_DATA.rem_ipc_esperado;
   const v = extractValorUnidad(doc);
   return v ? v.valor : null;
@@ -670,6 +711,12 @@ function ipcCardData(){
   if(arr.length<2) return null;
   const real = arr[arr.length-1], anterior = arr[arr.length-2];
   return {realVal:real.valor, anteriorVal:anterior.valor, fecha:real.fecha};
+}
+
+function emaeCardData(){
+  const arr = STATE.emae||[]; // ya viene ordenado de más nuevo a más viejo
+  if(arr.length<2) return null;
+  return {realVal:arr[0].valor, anteriorVal:arr[1].valor, fecha:arr[0].fecha};
 }
 
 // Resuelve Anterior / Esperado / Actual para cualquier tarjeta del calendario.
@@ -691,11 +738,46 @@ function resolveColumns(key, eventDate){
     };
   }
 
-  // Resto de indicadores: Reservas viene del scraper del BCRA; el resto
-  // (Recaudación, EMAE, Resultado fiscal, Balance cambiario, REM) tiene a
-  // admin-carga.html como única fuente de verdad (ver bloque FIRESTORE_KEY_MAP
-  // arriba para la lista exacta de IDs). Prioridad: dato de Firestore de este
-  // período > último dato conocido en el histórico > semilla inicial > nada.
+  if(key === 'emae'){
+    const d = emaeCardData();
+    if(!d) return { anterior:'—', esperado:'s/d', actual:'—', actualPending:false, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
+    const delta = d.realVal - d.anteriorVal;
+    return {
+      anterior: fmt(d.anteriorVal,1)+'%',
+      esperado: 's/d', // el REM releva PBI trimestral, no EMAE mensual — no hay pronóstico directo comparable
+      actual: fmt(d.realVal,1)+'%',
+      actualPending: false,
+      compareBase: d.anteriorVal,
+      compareLabel: 'vs. mes anterior (interanual)',
+      actualRaw: d.realVal,
+      historial: [{label: fmtDate(d.fecha+'-01'), value: fmt(d.realVal,1)+'%'}],
+    };
+  }
+
+  if(key === 'rem'){
+    // La propia tarjeta del REM: mostramos el valor que salió publicado
+    // (mediana de inflación mensual esperada), con la fuente real.
+    if(STATE.remIpc){
+      const v = STATE.remIpc.mediana;
+      return {
+        anterior: 's/d', esperado: 's/d',
+        actual: fmt(v,1)+'%', actualPending: false,
+        compareBase: null, compareLabel: '', actualRaw: v,
+        historial: [{label: STATE.remIpc.periodo || STATE.remIpc.fecha, value: fmt(v,1)+'%'}],
+      };
+    }
+    // Si el REM en vivo falla, cae al mismo respaldo que usa el IPC.
+    const esperado = remInflacionEsperada();
+    return esperado!==null
+      ? { anterior:'s/d', esperado:'s/d', actual: fmt(esperado,1)+'%', actualPending:false, compareBase:null, compareLabel:'', actualRaw:esperado, historial:[] }
+      : { anterior:'—', esperado:'—', actual:'—', actualPending:false, compareBase:null, compareLabel:'', actualRaw:null, historial:[] };
+  }
+
+  // Los únicos 3 que de verdad no tienen ninguna API pública gratuita en
+  // Argentina hoy: Recaudación (ARCA), Resultado fiscal (Hacienda) y Balance
+  // cambiario (BCRA). Para estos, admin-carga.html sigue siendo la única
+  // fuente de verdad. Prioridad: dato de este período > último del histórico
+  // > semilla inicial > nada.
   const fsKey = FIRESTORE_KEY_MAP[key];
   const doc = STATE.firestore?.[fsKey] || SEED_DATA[fsKey];
   const isSeed = !STATE.firestore?.[fsKey] && !!SEED_DATA[fsKey];
@@ -827,6 +909,8 @@ function renderDiagnostico(){
     {k:'inflacion', label:'Inflación'},
     {k:'feriados', label:'Feriados'},
     {k:'uva', label:'UVA'},
+    {k:'rem', label:'REM'},
+    {k:'emae', label:'EMAE'},
   ];
   $('diagBox').innerHTML = sources.map(s=>{
     const err = STATE.errors[s.k];
@@ -837,7 +921,7 @@ function renderDiagnostico(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
