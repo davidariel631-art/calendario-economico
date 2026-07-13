@@ -36,18 +36,18 @@
   <div class="panel">
     <h2>Calculadora de ajuste de alquiler</h2>
     <div class="field">
-      <label>Índice del contrato</label>
+      <label for="indice">Índice del contrato</label>
       <select id="indice">
         <option value="icl">ICL (Índice de Contratos de Locación, BCRA)</option>
         <option value="uva">UVA (Unidad de Valor Adquisitivo, BCRA)</option>
       </select>
     </div>
     <div class="field">
-      <label>Alquiler actual</label>
+      <label for="alquilerActual">Alquiler actual</label>
       <input type="number" id="alquilerActual" placeholder="ej: 350000" min="0">
     </div>
     <div class="field">
-      <label>Fecha de inicio del contrato o del último ajuste</label>
+      <label for="fechaInicio">Fecha de inicio del contrato o del último ajuste</label>
       <input type="month" id="fechaInicio">
     </div>
     <button class="btn" onclick="calcularAjuste()">Calcular nuevo alquiler</button>
@@ -122,7 +122,11 @@ function valorMasCercano(hist, fechaBuscada){
   // ya que ICL/UVA no siempre tienen un registro exacto para el día 1 del mes.
   if(!hist.length) return null;
   const candidatos = hist.filter(h => h.fecha <= fechaBuscada);
-  return candidatos.length ? candidatos[candidatos.length-1] : hist[0];
+  if(candidatos.length) return candidatos[candidatos.length-1];
+  // No hay ningún dato tan viejo como lo pedido — avisamos en vez de usar
+  // el más viejo disponible como si fuera el correcto (eso daría una
+  // variación falsa, mucho más chica de la real).
+  return { insuficiente: true, disponibleDesde: hist[0].fecha };
 }
 
 function calcularAjuste(){
@@ -137,6 +141,12 @@ function calcularAjuste(){
   const inicio = valorMasCercano(hist, fechaInicio+'-28');
   const actual = hist[hist.length-1];
   if(!inicio || !actual){ $('calcWarning').style.display='block'; $('calcWarning').textContent='No se encontró el índice para esa fecha.'; return; }
+  if(inicio.insuficiente){
+    $('resultBox').style.display = 'none';
+    $('calcWarning').style.display = 'block';
+    $('calcWarning').textContent = `Todavía no tenemos historial hasta esa fecha — el dato más antiguo disponible es del ${inicio.disponibleDesde}. El cálculo no sería confiable, así que preferimos no mostrarlo en vez de darte un número engañoso.`;
+    return;
+  }
 
   const variacion = ((actual.valor - inicio.valor)/inicio.valor)*100;
   const nuevoAlquiler = alquiler * (actual.valor/inicio.valor);

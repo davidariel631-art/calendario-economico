@@ -47,35 +47,35 @@
   <div class="sub">Para los 2 únicos datos que ARCA/Hacienda no exponen por ninguna fuente automatizable de forma confiable: Recaudación y Resultado fiscal. (IPC, EMAE, REM, Reservas y Balance cambiario ya se actualizan solos).</div>
 
   <div id="loginBox">
-    <label>Email</label>
+    <label for="email">Email</label>
     <input type="email" id="email" placeholder="tu-email@ejemplo.com" autocomplete="username">
-    <label>Contraseña</label>
+    <label for="password">Contraseña</label>
     <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
     <button onclick="login()">Ingresar</button>
     <div class="msg" id="loginMsg"></div>
   </div>
 
   <div id="formBox">
-    <label>Indicador</label>
+    <label for="indicador">Indicador</label>
     <select id="indicador">
       <option value="recaudacion">Recaudación (ARCA)</option>
       <option value="resultado_fiscal">Resultado fiscal (Hacienda)</option>
     </select>
 
-    <label>Período (mes del dato)</label>
+    <label for="periodo">Período (mes del dato)</label>
     <input type="month" id="periodo">
 
-    <label>Valor</label>
+    <label for="valor">Valor</label>
     <input type="number" step="any" id="valor" placeholder="ej: 20017104 o 2,0 o -150000">
 
-    <label>Unidad</label>
+    <label for="unidad">Unidad</label>
     <select id="unidad">
       <option value="Millones de $">Millones de $ (ARS)</option>
       <option value="%">% (variación)</option>
       <option value="Millones de USD">Millones de USD</option>
     </select>
 
-    <label>Fuente (opcional, para tu propia referencia)</label>
+    <label for="fuente">Fuente (opcional, para tu propia referencia)</label>
     <input type="text" id="fuente" placeholder="ej: informe ARCA junio 2026, pág. 3">
 
     <button onclick="guardar()">Guardar en Firestore</button>

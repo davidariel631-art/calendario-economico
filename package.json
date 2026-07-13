@@ -7,6 +7,7 @@
     "reservas": "node scripts/scrape-bcra-reservas.js",
     "cambiario": "node scripts/scrape-bcra-balance-cambiario.js",
     "mercado": "node scripts/scrape-indicadores-mercado.js",
+    "backfill": "node scripts/backfill-historico.js",
     "all": "npm run reservas && npm run cambiario && npm run mercado"
   },
   "dependencies": {

@@ -49,7 +49,7 @@
   <div class="panel">
     <h2>Calculadora: llenar el tanque</h2>
     <div class="field">
-      <label>Tipo de combustible</label>
+      <label for="tipoCombustible">Tipo de combustible</label>
       <select id="tipoCombustible">
         <option value="super">Nafta Súper</option>
         <option value="premium">Nafta Premium</option>
@@ -57,7 +57,7 @@
       </select>
     </div>
     <div class="field">
-      <label>Litros a cargar</label>
+      <label for="litros">Litros a cargar</label>
       <input type="number" id="litros" placeholder="ej: 40" min="0" step="0.1">
     </div>
     <button class="btn" onclick="calcularTanque()">Calcular</button>
