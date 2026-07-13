@@ -412,7 +412,15 @@ function extractValorUnidad(doc){
 // 60 segundos, en cada pestaña abierta. Eso es innecesario y puede gatillar
 // límites de uso en la API pública. Ahora: timeout por intento, 2 reintentos
 // con espera creciente, y el histórico pesado se pide UNA sola vez por sesión.
-async function fetchJsonRetry(url, {retries=2, timeoutMs=9000} = {}){
+// Proxy público de último recurso, solo para cuando el pedido directo
+// falla por CORS (no por un 404 o un 500 real, esos los dejamos pasar tal
+// cual). Esto es un parche, no la solución de fondo — lo correcto a mediano
+// plazo es que el scraper (que corre en GitHub Actions, sin restricción de
+// CORS) traiga estos datos y los guarde en Firestore, y que el panel deje
+// de pedirle directo al navegador a APIs de terceros. Ver README.
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+async function fetchJsonRetry(url, {retries=2, timeoutMs=9000, allowProxyFallback=true} = {}){
   let lastErr;
   for(let attempt=0; attempt<=retries; attempt++){
     const ctrl = new AbortController();
@@ -425,6 +433,17 @@ async function fetchJsonRetry(url, {retries=2, timeoutMs=9000} = {}){
     }catch(err){
       clearTimeout(t);
       lastErr = err;
+      // "Failed to fetch" es lo que tira Chrome/Firefox tanto para caídas
+      // de red como para bloqueos de CORS — no hay forma 100% segura de
+      // distinguirlos desde JS, así que en el último intento probamos el
+      // proxy como red de seguridad antes de rendirnos.
+      const pareceCorsOred = /Failed to fetch|NetworkError|Load failed/i.test(err.message||'');
+      if(attempt===retries && allowProxyFallback && pareceCorsOred){
+        try{
+          const res2 = await fetch(CORS_PROXY + encodeURIComponent(url));
+          if(res2.ok) return await res2.json();
+        }catch(e2){ /* el proxy tampoco pudo — nos rendimos con el error original */ }
+      }
       if(attempt < retries) await new Promise(r=>setTimeout(r, 800*(attempt+1)));
     }
   }
@@ -467,9 +486,23 @@ function ayerVenta(casaKey){
 
 async function loadRiesgo(){
   try{
-    STATE.riesgo = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
+    const r = await loadRiesgoArgly();
+    STATE.riesgo = { valor: r.valor, fecha: r.fecha };
+    // Bonus confirmado: /v1/riesgo-pais?anterior=true nos da el dato de la
+    // rueda anterior directo, sin tener que pedir el histórico completo.
+    try{
+      const json2 = await fetchJsonRetry('https://api.argly.com.ar/v1/riesgo-pais?anterior=true', {retries:1, allowProxyFallback:false});
+      const anterior = arglyUnwrap(json2);
+      if(typeof anterior?.ultimo === 'number') STATE.riesgoAnteriorArgly = anterior.ultimo;
+    }catch(e){ /* no crítico, usamos el histórico como respaldo para la variación */ }
     STATE.errors.riesgo = null;
-  }catch(e){ STATE.errors.riesgo = e.message; throw e; }
+  }catch(e){
+    console.warn('Argly riesgo-país falló, probando ArgentinaDatos:', e.message);
+    try{
+      STATE.riesgo = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
+      STATE.errors.riesgo = null;
+    }catch(e2){ STATE.errors.riesgo = e2.message; throw e2; }
+  }
 
   // El histórico completo (para el sparkline) se pide una sola vez por sesión.
   if(!STATE.riesgoHist){
@@ -502,8 +535,16 @@ async function loadFeriados(){
 }
 
 // UVA: unidad que ajusta créditos hipotecarios UVA y muchos contratos de
-// alquiler. Endpoint oficial confirmado de ArgentinaDatos.
+// alquiler.
 async function loadUVA(){
+  try{
+    const r = await loadUVAArgly();
+    STATE.uva = [{valor:r.valor, fecha:r.fecha}]; // mismo shape que espera renderKPIs: array, toma el último
+    STATE.errors.uva = null;
+    return STATE.uva;
+  }catch(e){
+    console.warn('Argly UVA falló, probando ArgentinaDatos:', e.message);
+  }
   try{
     const data = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/uva', {retries:1});
     STATE.uva = [...data].sort((a,b)=> a.fecha.localeCompare(b.fecha));
@@ -512,37 +553,58 @@ async function loadUVA(){
   return STATE.uva;
 }
 
-// ---------- Argly: SMVM, Canasta Básica Alimentaria y Total ----------
-// Argly (api.argly.com.ar) es gratis, sin auth, mantenido por un solo dev.
-// Como no expone el JSON de ejemplo sin correr su Playground en el
-// navegador, buscamos el valor probando varios nombres de campo posibles
-// en vez de asumir uno — si ninguno matchea, no se inventa nada.
-function arglyPickNumber(obj, candidatos){
-  if(!obj || typeof obj !== 'object') return null;
-  for(const key of candidatos){
-    if(typeof obj[key] === 'number') return obj[key];
-    if(typeof obj[key] === 'string' && !isNaN(parseFloat(obj[key]))) return parseFloat(obj[key]);
-  }
-  return null;
+// ---------- Argly: schemas CONFIRMADOS (ya no se adivina nada) ----------
+// Todos los endpoints de Argly devuelven { "data": {...} } — hay que abrir
+// ese sobre antes de buscar el campo. Además, varias fechas vienen en
+// formato DD/MM/AAAA (no ISO), así que las normalizamos acá.
+function arglyUnwrap(json){ return json?.data ?? json ?? null; }
+function arglyFechaISO(str){
+  if(!str) return null;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : str; // ya viene ISO o similar
 }
-function arglyPickString(obj, candidatos){
-  if(!obj || typeof obj !== 'object') return null;
-  for(const key of candidatos){ if(typeof obj[key] === 'string') return obj[key]; }
-  return null;
+
+async function loadRiesgoArgly(){
+  // Confirmado: GET /v1/riesgo-pais -> {data:{ultimo, fecha, variacion, tendencia, fuente}}
+  const json = await fetchJsonRetry('https://api.argly.com.ar/v1/riesgo-pais', {retries:1, allowProxyFallback:false});
+  const d = arglyUnwrap(json);
+  if(typeof d?.ultimo !== 'number') throw new Error('Argly riesgo-país: falta "ultimo"');
+  return { valor: d.ultimo, fecha: arglyFechaISO(d.fecha), variacion: d.variacion, tendencia: d.tendencia };
 }
-async function loadArglyIndicador(endpoint, stateKey, candidatosValor, candidatosFecha){
+
+async function loadUVAArgly(){
+  // Confirmado: GET /v1/uva -> {data:{fecha:"DD/MM/AAAA", valor}}
+  const json = await fetchJsonRetry('https://api.argly.com.ar/v1/uva', {retries:1, allowProxyFallback:false});
+  const d = arglyUnwrap(json);
+  if(typeof d?.valor !== 'number') throw new Error('Argly UVA: falta "valor"');
+  return { valor: d.valor, fecha: arglyFechaISO(d.fecha) };
+}
+
+async function loadSMVM(){
   try{
-    const d = await fetchJsonRetry(`https://api.argly.com.ar/v1/${endpoint}`, {retries:1});
-    const valor = arglyPickNumber(d, candidatosValor);
-    const fecha = arglyPickString(d, candidatosFecha) || null;
-    STATE[stateKey] = valor!==null ? {valor, fecha} : null;
-    STATE.errors[stateKey] = null;
-  }catch(e){ STATE.errors[stateKey] = e.message; STATE[stateKey] = null; }
-  return STATE[stateKey];
+    // Confirmado: GET /v1/smvm -> {data:{vigente_desde:"DD/MM/AAAA", smvm, smvm_dia, smvm_hora, fuente}}
+    const json = await fetchJsonRetry('https://api.argly.com.ar/v1/smvm', {retries:1, allowProxyFallback:false});
+    const d = arglyUnwrap(json);
+    if(typeof d?.smvm !== 'number') throw new Error('Argly SMVM: falta "smvm"');
+    STATE.smvm = { valor: d.smvm, fecha: arglyFechaISO(d.vigente_desde) };
+    STATE.errors.smvm = null;
+  }catch(e){ STATE.errors.smvm = e.message; STATE.smvm = null; }
+  return STATE.smvm;
 }
-const loadSMVM = () => loadArglyIndicador('smvm', 'smvm', ['valor','value','monto'], ['fecha','date','periodo']);
-const loadCBA  = () => loadArglyIndicador('cba',  'cba',  ['valor','value','monto'], ['fecha','date','periodo']);
-const loadCBT  = () => loadArglyIndicador('cbt',  'cbt',  ['valor','value','monto'], ['fecha','date','periodo']);
+
+// Canasta Básica: confirmado — /v1/canasta devuelve cba y cbt como objetos
+// anidados, cada uno con "adulto_equivalente" (el valor mensual de
+// referencia por adulto) además del detalle por tipo de hogar.
+async function loadCanasta(){
+  try{
+    const json = await fetchJsonRetry('https://api.argly.com.ar/v1/canasta', {retries:1, allowProxyFallback:false});
+    const d = arglyUnwrap(json);
+    const fecha = d?.fecha_publicacion || d?.periodo || null; // fecha_publicacion ya viene ISO
+    STATE.cba = (typeof d?.cba?.adulto_equivalente === 'number') ? { valor: d.cba.adulto_equivalente, fecha, variacionMensual: d.cba.variacion_mensual } : null;
+    STATE.cbt = (typeof d?.cbt?.adulto_equivalente === 'number') ? { valor: d.cbt.adulto_equivalente, fecha, variacionMensual: d.cbt.variacion_mensual } : null;
+    STATE.errors.canasta = (STATE.cba || STATE.cbt) ? null : 'Argly respondió pero no se encontró cba.adulto_equivalente / cbt.adulto_equivalente';
+  }catch(e){ STATE.errors.canasta = e.message; STATE.cba = null; STATE.cbt = null; }
+}
 
 // REM (Relevamiento de Expectativas de Mercado): SÍ tiene API real y
 // gratuita en ArgentinaDatos. El informe trae varios "indicador" distintos
@@ -607,7 +669,9 @@ function renderKPIs(){
       exp: brecha>30 ? 'Brecha alta: señal de desconfianza en el dólar oficial.' : brecha<10 ? 'Brecha baja: el mercado ve el dólar oficial como razonable.' : ''});
   }
   if(STATE.riesgo){
-    const hist = STATE.riesgoHist||[]; const prev = hist.length>1?hist[hist.length-2].valor:null;
+    const hist = STATE.riesgoHist||[];
+    const prev = (typeof STATE.riesgoAnteriorArgly === 'number') ? STATE.riesgoAnteriorArgly
+      : (hist.length>1 ? hist[hist.length-2].valor : null);
     const delta = prev!==null? STATE.riesgo.valor-prev : null;
     const st = statusClass(delta);
     tiles.push({k:'Riesgo país', v:fmt(STATE.riesgo.valor,0)+' pb', st, sub: delta!==null?(arrow(delta)+' '+fmt(Math.abs(delta),0)+' pb'):'',
@@ -645,8 +709,8 @@ function renderResumen(){
       parts.push('el dólar blue está prácticamente sin cambios respecto a ayer');
     }
   }
-  if(STATE.riesgo && STATE.riesgoHist && STATE.riesgoHist.length>1){
-    const prev = STATE.riesgoHist[STATE.riesgoHist.length-2].valor;
+  if(STATE.riesgo && (typeof STATE.riesgoAnteriorArgly === 'number' || (STATE.riesgoHist && STATE.riesgoHist.length>1))){
+    const prev = (typeof STATE.riesgoAnteriorArgly === 'number') ? STATE.riesgoAnteriorArgly : STATE.riesgoHist[STATE.riesgoHist.length-2].valor;
     const delta = STATE.riesgo.valor - prev;
     if(Math.abs(delta)>=3){
       parts.push(`el riesgo país ${delta>0?'empeoró':'mejoró'} ${delta>0?'▲':'▼'} (${fmt(Math.abs(delta),0)} pb)`);
@@ -684,7 +748,8 @@ function renderRiesgo(){
     return;
   }
   const hist = (STATE.riesgoHist||[]).slice(-40); const values = hist.map(h=>h.valor);
-  const prev = hist.length>1? hist[hist.length-2].valor : null;
+  const prev = (typeof STATE.riesgoAnteriorArgly === 'number') ? STATE.riesgoAnteriorArgly
+    : (hist.length>1 ? hist[hist.length-2].valor : null);
   const delta = prev!==null? STATE.riesgo.valor-prev : null; const st = statusClass(delta);
   $('riesgoSub').textContent = fmtDate(STATE.riesgo.fecha);
   $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v mono">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta mono">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
@@ -1035,8 +1100,7 @@ function renderDiagnostico(){
     {k:'rem', label:'REM'},
     {k:'emae', label:'EMAE'},
     {k:'smvm', label:'SMVM (Argly)'},
-    {k:'cba', label:'CBA (Argly)'},
-    {k:'cbt', label:'CBT (Argly)'},
+    {k:'canasta', label:'Canasta (Argly)'},
   ];
   $('diagBox').innerHTML = sources.map(s=>{
     const err = STATE.errors[s.k];
@@ -1047,7 +1111,7 @@ function renderDiagnostico(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCBA(), loadCBT()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});

@@ -71,11 +71,24 @@ const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).t
 
 let iclHist = [], uvaHist = [];
 
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+async function fetchConProxy(url){
+  try{
+    const res = await fetch(url);
+    if(res.ok) return await res.json();
+  }catch(e){ /* probamos el proxy abajo */ }
+  try{
+    const res2 = await fetch(CORS_PROXY + encodeURIComponent(url));
+    if(res2.ok) return await res2.json();
+  }catch(e2){ /* nos rendimos */ }
+  return [];
+}
+
 async function cargarIndices(){
   try{
     const [icl, uva] = await Promise.all([
-      fetch('https://api.argentinadatos.com/v1/finanzas/indices/icl').then(r=>r.ok?r.json():[]).catch(()=>[]),
-      fetch('https://api.argentinadatos.com/v1/finanzas/indices/uva').then(r=>r.ok?r.json():[]).catch(()=>[]),
+      fetchConProxy('https://api.argentinadatos.com/v1/finanzas/indices/icl'),
+      fetchConProxy('https://api.argentinadatos.com/v1/finanzas/indices/uva'),
     ]);
     iclHist = [...icl].sort((a,b)=>a.fecha.localeCompare(b.fecha));
     uvaHist = [...uva].sort((a,b)=>a.fecha.localeCompare(b.fecha));
