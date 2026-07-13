@@ -484,126 +484,85 @@ function ayerVenta(casaKey){
   return arr[arr.length-1].venta;
 }
 
-async function loadRiesgo(){
-  try{
-    const r = await loadRiesgoArgly();
-    STATE.riesgo = { valor: r.valor, fecha: r.fecha };
-    // Bonus confirmado: /v1/riesgo-pais?anterior=true nos da el dato de la
-    // rueda anterior directo, sin tener que pedir el histórico completo.
-    try{
-      const json2 = await fetchJsonRetry('https://api.argly.com.ar/v1/riesgo-pais?anterior=true', {retries:1, allowProxyFallback:false});
-      const anterior = arglyUnwrap(json2);
-      if(typeof anterior?.ultimo === 'number') STATE.riesgoAnteriorArgly = anterior.ultimo;
-    }catch(e){ /* no crítico, usamos el histórico como respaldo para la variación */ }
-    STATE.errors.riesgo = null;
-  }catch(e){
-    console.warn('Argly riesgo-país falló, probando ArgentinaDatos:', e.message);
-    try{
-      STATE.riesgo = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo');
-      STATE.errors.riesgo = null;
-    }catch(e2){ STATE.errors.riesgo = e2.message; throw e2; }
-  }
+// ============================================================
+// A PARTIR DE ACÁ: todo se lee de Firestore, no de las APIs directo.
+// Motivo confirmado: tanto ArgentinaDatos como Argly bloquean CORS desde
+// el navegador (lo confirmamos con el error real en consola) — nunca van
+// a poder leerse directo desde acá, sin importar reintentos ni proxies.
+// El scraper (scripts/scrape-indicadores-mercado.js, corre en GitHub
+// Actions sin navegador de por medio) trae estos datos server-side y los
+// guarda en Firestore. Acá solo los leemos.
+// ============================================================
 
-  // El histórico completo (para el sparkline) se pide una sola vez por sesión.
+async function leerIndicadorFS(key){
+  if(!fsDb) return null;
+  try{
+    const snap = await fsDb.collection('indicadores').doc(key).get();
+    return snap.exists ? snap.data() : null;
+  }catch(e){ console.warn(`Firestore: no se pudo leer ${key}:`, e.message); return null; }
+}
+async function leerHistoricoFS(key, cantidad=40){
+  if(!fsDb) return [];
+  try{
+    const snap = await fsDb.collection('indicadores').doc(key).collection('historico')
+      .orderBy(firebase.firestore.FieldPath.documentId(), 'desc').limit(cantidad).get();
+    return snap.docs.map(d=>d.data()).reverse(); // de más viejo a más nuevo, como espera el sparkline
+  }catch(e){ console.warn(`Firestore: no se pudo leer histórico de ${key}:`, e.message); return []; }
+}
+
+async function loadRiesgo(){
+  const doc = await leerIndicadorFS('riesgo_pais');
+  if(doc?.ultimo){
+    STATE.riesgo = { valor: doc.ultimo.valor, fecha: doc.ultimo.fecha };
+    STATE.riesgoAnteriorArgly = doc.ultimo.valorAnterior ?? null;
+    STATE.errors.riesgo = null;
+  } else {
+    STATE.errors.riesgo = 'Sin dato en Firestore (indicadores/riesgo_pais) — revisar que el scraper haya corrido.';
+  }
   if(!STATE.riesgoHist){
-    try{
-      STATE.riesgoHist = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais', {retries:1});
-    }catch(e){ console.warn('histórico riesgo país no disponible (no es crítico):', e.message); }
+    STATE.riesgoHist = await leerHistoricoFS('riesgo_pais');
   }
   return STATE.riesgo;
 }
 
 async function loadInflacion(){
-  try{
-    const [mensual, interanual] = await Promise.all([
-      fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacion'),
-      fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/inflacionInteranual')
-    ]);
-    STATE.inflMensual = mensual; STATE.inflInteranual = interanual;
-    STATE.errors.inflacion = null;
-  }catch(e){ STATE.errors.inflacion = e.message; throw e; }
+  const [mensualDoc, interanualDoc] = await Promise.all([
+    leerIndicadorFS('ipc_mensual'), leerIndicadorFS('ipc_interanual')
+  ]);
+  const histMensual = await leerHistoricoFS('ipc_mensual', 12);
+  STATE.inflMensual = histMensual.length ? histMensual : (mensualDoc?.ultimo ? [mensualDoc.ultimo] : []);
+  STATE.inflInteranual = interanualDoc?.ultimo ? [interanualDoc.ultimo] : [];
+  STATE.errors.inflacion = (mensualDoc || interanualDoc) ? null : 'Sin dato en Firestore (indicadores/ipc_mensual, ipc_interanual).';
   return {mensual:STATE.inflMensual, interanual:STATE.inflInteranual};
 }
 
 async function loadFeriados(){
-  const year = new Date().getFullYear();
-  try{
-    STATE.feriados = await fetchJsonRetry(`https://api.argentinadatos.com/v1/feriados/${year}`);
-    STATE.errors.feriados = null;
-  }catch(e){ STATE.errors.feriados = e.message; throw e; }
+  const doc = await leerIndicadorFS('feriados');
+  STATE.feriados = doc?.lista || [];
+  STATE.errors.feriados = doc ? null : 'Sin dato en Firestore (indicadores/feriados).';
   return STATE.feriados;
 }
 
-// UVA: unidad que ajusta créditos hipotecarios UVA y muchos contratos de
-// alquiler.
 async function loadUVA(){
-  try{
-    const r = await loadUVAArgly();
-    STATE.uva = [{valor:r.valor, fecha:r.fecha}]; // mismo shape que espera renderKPIs: array, toma el último
-    STATE.errors.uva = null;
-    return STATE.uva;
-  }catch(e){
-    console.warn('Argly UVA falló, probando ArgentinaDatos:', e.message);
-  }
-  try{
-    const data = await fetchJsonRetry('https://api.argentinadatos.com/v1/finanzas/indices/uva', {retries:1});
-    STATE.uva = [...data].sort((a,b)=> a.fecha.localeCompare(b.fecha));
-    STATE.errors.uva = null;
-  }catch(e){ STATE.errors.uva = e.message; /* no crítico */ }
+  const doc = await leerIndicadorFS('uva');
+  STATE.uva = doc?.ultimo ? [doc.ultimo] : [];
+  STATE.errors.uva = doc ? null : 'Sin dato en Firestore (indicadores/uva).';
   return STATE.uva;
 }
 
-// ---------- Argly: schemas CONFIRMADOS (ya no se adivina nada) ----------
-// Todos los endpoints de Argly devuelven { "data": {...} } — hay que abrir
-// ese sobre antes de buscar el campo. Además, varias fechas vienen en
-// formato DD/MM/AAAA (no ISO), así que las normalizamos acá.
-function arglyUnwrap(json){ return json?.data ?? json ?? null; }
-function arglyFechaISO(str){
-  if(!str) return null;
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : str; // ya viene ISO o similar
-}
-
-async function loadRiesgoArgly(){
-  // Confirmado: GET /v1/riesgo-pais -> {data:{ultimo, fecha, variacion, tendencia, fuente}}
-  const json = await fetchJsonRetry('https://api.argly.com.ar/v1/riesgo-pais', {retries:1, allowProxyFallback:false});
-  const d = arglyUnwrap(json);
-  if(typeof d?.ultimo !== 'number') throw new Error('Argly riesgo-país: falta "ultimo"');
-  return { valor: d.ultimo, fecha: arglyFechaISO(d.fecha), variacion: d.variacion, tendencia: d.tendencia };
-}
-
-async function loadUVAArgly(){
-  // Confirmado: GET /v1/uva -> {data:{fecha:"DD/MM/AAAA", valor}}
-  const json = await fetchJsonRetry('https://api.argly.com.ar/v1/uva', {retries:1, allowProxyFallback:false});
-  const d = arglyUnwrap(json);
-  if(typeof d?.valor !== 'number') throw new Error('Argly UVA: falta "valor"');
-  return { valor: d.valor, fecha: arglyFechaISO(d.fecha) };
-}
-
 async function loadSMVM(){
-  try{
-    // Confirmado: GET /v1/smvm -> {data:{vigente_desde:"DD/MM/AAAA", smvm, smvm_dia, smvm_hora, fuente}}
-    const json = await fetchJsonRetry('https://api.argly.com.ar/v1/smvm', {retries:1, allowProxyFallback:false});
-    const d = arglyUnwrap(json);
-    if(typeof d?.smvm !== 'number') throw new Error('Argly SMVM: falta "smvm"');
-    STATE.smvm = { valor: d.smvm, fecha: arglyFechaISO(d.vigente_desde) };
-    STATE.errors.smvm = null;
-  }catch(e){ STATE.errors.smvm = e.message; STATE.smvm = null; }
+  const doc = await leerIndicadorFS('smvm');
+  STATE.smvm = doc?.ultimo ? { valor: doc.ultimo.valor, fecha: doc.ultimo.fecha } : null;
+  STATE.errors.smvm = doc ? null : 'Sin dato en Firestore (indicadores/smvm).';
   return STATE.smvm;
 }
 
-// Canasta Básica: confirmado — /v1/canasta devuelve cba y cbt como objetos
-// anidados, cada uno con "adulto_equivalente" (el valor mensual de
-// referencia por adulto) además del detalle por tipo de hogar.
 async function loadCanasta(){
-  try{
-    const json = await fetchJsonRetry('https://api.argly.com.ar/v1/canasta', {retries:1, allowProxyFallback:false});
-    const d = arglyUnwrap(json);
-    const fecha = d?.fecha_publicacion || d?.periodo || null; // fecha_publicacion ya viene ISO
-    STATE.cba = (typeof d?.cba?.adulto_equivalente === 'number') ? { valor: d.cba.adulto_equivalente, fecha, variacionMensual: d.cba.variacion_mensual } : null;
-    STATE.cbt = (typeof d?.cbt?.adulto_equivalente === 'number') ? { valor: d.cbt.adulto_equivalente, fecha, variacionMensual: d.cbt.variacion_mensual } : null;
-    STATE.errors.canasta = (STATE.cba || STATE.cbt) ? null : 'Argly respondió pero no se encontró cba.adulto_equivalente / cbt.adulto_equivalente';
-  }catch(e){ STATE.errors.canasta = e.message; STATE.cba = null; STATE.cbt = null; }
+  const doc = await leerIndicadorFS('canasta');
+  const u = doc?.ultimo;
+  STATE.cba = (u && typeof u.cbaAdultoEquivalente === 'number') ? { valor: u.cbaAdultoEquivalente, fecha: u.fecha } : null;
+  STATE.cbt = (u && typeof u.cbtAdultoEquivalente === 'number') ? { valor: u.cbtAdultoEquivalente, fecha: u.fecha } : null;
+  STATE.errors.canasta = doc ? null : 'Sin dato en Firestore (indicadores/canasta).';
 }
 
 // REM (Relevamiento de Expectativas de Mercado): SÍ tiene API real y
