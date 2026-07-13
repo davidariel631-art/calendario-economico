@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendario — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  .cal-row{display:flex; justify-content:space-between; align-items:center; padding:9px 2px; border-bottom:1px dashed var(--line); font-size:12.5px;}
+  .cal-row:last-child{border-bottom:none;}
+  .cal-row .date-chip{font-size:10px; color:var(--celeste); background:var(--celeste-bg); border:1px solid var(--celeste); border-radius:4px; padding:2px 7px; font-weight:700; white-space:nowrap; margin-left:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="consumo.html">Consumo</a>
+    <a href="hogar.html">Hogar</a>
+    <a href="finanzas.html">Finanzas</a>
+    <a href="calendario.html" class="active">Calendario</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>CALENDARIO</h1>
+      <span class="eyebrow">feriados y vencimientos · Argentina</span>
+    </div>
+  </header>
+
+  <div class="panel">
+    <h2>Próximos feriados <small id="ferSub"></small></h2>
+    <div id="ferBox"><div class="loading">Cargando…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Vencimientos recurrentes del mes <small>fechas aproximadas — ver aclaración abajo</small></h2>
+    <div id="vencBox"></div>
+  </div>
+
+  <div class="panel">
+    <h2>ANSES, AUH y jubilaciones</h2>
+    <div class="loading" style="text-align:left; padding:4px 0;">
+      Estos pagos se organizan por <b>terminación de DNI</b> y ANSES no tiene una API pública que permita calcular la fecha exacta para cada persona — solo publican un calendario mensual en su propia web. En vez de inventarte una fecha que puede estar mal, te dejamos el link directo:
+      <br><br>
+      <a href="https://www.anses.gob.ar/calendario-de-pagos" target="_blank" rel="noopener" style="color:var(--celeste);">anses.gob.ar/calendario-de-pagos →</a>
+    </div>
+  </div>
+
+  <footer>
+    Los feriados se actualizan automáticamente. Los vencimientos recurrentes (Monotributo, patentes) son fechas <b>típicas aproximadas</b>, no oficiales — cada organismo puede correr el plazo puntualmente; confirmá siempre en la fuente oficial antes de una fecha límite importante.
+  </footer>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+let fsDb = null;
+if(typeof firebase !== 'undefined'){
+  try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
+  catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+}
+
+function fmtDateCorta(iso){
+  return new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'});
+}
+
+async function cargarFeriados(){
+  if(!fsDb){ $('ferBox').innerHTML = '<div class="loading">No se pudo conectar con Firestore.</div>'; return; }
+  try{
+    const snap = await fsDb.collection('indicadores').doc('feriados').get();
+    const data = snap.exists ? snap.data() : null;
+    const lista = data?.lista || [];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const upcoming = lista.filter(f => new Date(f.fecha+'T12:00:00') >= today).slice(0,8);
+
+    if(!upcoming.length){
+      $('ferBox').innerHTML = '<div class="loading">No quedan feriados este año, o todavía no hay datos cargados.</div>';
+      return;
+    }
+    $('ferSub').textContent = data?.anio || '';
+    $('ferBox').innerHTML = upcoming.map(f => `
+      <div class="cal-row"><span>${f.nombre}${f.tipo ? ` <span style="color:var(--dim); font-size:10.5px;">(${f.tipo})</span>` : ''}</span><span class="date-chip">${fmtDateCorta(f.fecha)}</span></div>
+    `).join('');
+  }catch(e){
+    console.error(e);
+    $('ferBox').innerHTML = '<div class="loading">Error al leer feriados.</div>';
+  }
+}
+
+// Vencimientos recurrentes: solo incluimos los que de verdad tienen un
+// patrón mensual razonablemente estable y conocido públicamente. Nada de
+// ANSES/AUH acá (esos dependen de terminación de DNI y van en su propia
+// sección con el link oficial, no un cálculo nuestro).
+function renderVencimientos(){
+  const hoy = new Date();
+  const anio = hoy.getFullYear(), mes = hoy.getMonth();
+  const items = [
+    {dia:20, nombre:'Vencimiento Monotributo', nota:'Categorías A-D suelen vencer alrededor del día 20 de cada mes — confirmá tu categoría exacta en ARCA.'},
+  ];
+  const html = items.map(it => {
+    const fecha = new Date(anio, mes, it.dia);
+    return `<div class="cal-row"><span>${it.nombre}<br><span style="color:var(--dim); font-size:10.5px;">${it.nota}</span></span><span class="date-chip">${fecha.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}</span></div>`;
+  }).join('');
+  $('vencBox').innerHTML = html;
+}
+
+cargarFeriados();
+renderVencimientos();
+</script>
+</body>
+</html>

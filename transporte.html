@@ -25,10 +25,10 @@
   <nav class="topnav">
     <a href="index.html">Dashboard</a>
     <a href="transporte.html" class="active">Transporte</a>
-    <a href="#" class="disabled" title="Próximamente">Consumo</a>
+    <a href="consumo.html">Consumo</a>
     <a href="hogar.html">Hogar</a>
     <a href="finanzas.html">Finanzas</a>
-    <a href="#" class="disabled" title="Próximamente">Calendario</a>
+    <a href="calendario.html">Calendario</a>
   </nav>
 
   <header>
@@ -70,8 +70,7 @@
   </div>
 
   <footer>
-    Fuente: <b>Argly</b> (api.argly.com.ar), que sincroniza precios de combustible por provincia y estación de servicio.
-    El precio mostrado es un <b>promedio simple</b> de las estaciones disponibles — puede variar según provincia y bandera.
+    El precio mostrado es un <b>promedio simple</b> de estaciones disponibles — puede variar según provincia y bandera.
   </footer>
 
 </div>
@@ -118,33 +117,27 @@ async function init(){
 
     const nombres = {super:'Nafta Súper', premium:'Nafta Premium', gasoil:'Gasoil'};
     let html = '';
-    let algunaFalta = false;
     for(const key of ['super','premium','gasoil']){
       const p = promedios[key];
-      if(p){
-        html += `<div class="fuel-card">
-          <div class="name">${nombres[key]}</div>
-          <div class="price mono">$${fmt(p.valor,1)}</div>
-          <div class="note">promedio Buenos Aires</div>
-        </div>`;
-      } else {
-        algunaFalta = true;
-        html += `<div class="fuel-card">
-          <div class="name">${nombres[key]}</div>
-          <div class="price mono">—</div>
-          <div class="note">sin datos para este tipo</div>
-        </div>`;
-      }
+      if(!p) continue; // si no hay dato para este combustible, directamente no se muestra
+      html += `<div class="fuel-card">
+        <div class="name">${nombres[key]}</div>
+        <div class="price mono">$${fmt(p.valor,1)}</div>
+        <div class="note">promedio Buenos Aires</div>
+      </div>`;
     }
-    $('fuelGrid').innerHTML = html;
+    $('fuelGrid').innerHTML = html || '<div class="loading">Sin datos de combustibles todavía.</div>';
     $('fuelSub').textContent = data ? `actualizado ${new Date(data.scrapedAt).toLocaleDateString('es-AR')}` : '';
     if(!data){
       $('fuelWarning').style.display = 'block';
       $('fuelWarning').textContent = 'Sin datos todavía en Firestore. Corré el scraper (npm run mercado) al menos una vez.';
-    } else if(algunaFalta){
-      $('fuelWarning').style.display = 'block';
-      $('fuelWarning').textContent = 'Algún tipo de combustible no se pudo leer de Argly en la última corrida del scraper.';
     }
+
+    // El selector de la calculadora solo ofrece los combustibles que
+    // realmente tienen dato disponible.
+    const disponibles = ['super','premium','gasoil'].filter(k => promedios[k]);
+    $('tipoCombustible').innerHTML = disponibles.map(k => `<option value="${k}">${nombres[k]}</option>`).join('')
+      || '<option value="">Sin combustibles disponibles</option>';
   }catch(e){
     $('fuelGrid').innerHTML = '<div class="loading">Error al leer combustibles.</div>';
     console.error(e);

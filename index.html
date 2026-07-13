@@ -220,10 +220,10 @@
   <nav class="topnav">
     <a href="index.html" class="active">Dashboard</a>
     <a href="transporte.html">Transporte</a>
-    <a href="#" class="disabled" title="Próximamente">Consumo</a>
+    <a href="consumo.html">Consumo</a>
     <a href="hogar.html">Hogar</a>
     <a href="finanzas.html">Finanzas</a>
-    <a href="#" class="disabled" title="Próximamente">Calendario</a>
+    <a href="calendario.html">Calendario</a>
   </nav>
 
   <header>
@@ -270,7 +270,7 @@
   </div>
 
   <footer>
-    Fuentes en vivo: <b>DolarAPI</b> (cotizaciones) · <b>ArgentinaDatos API</b> (riesgo país, IPC INDEC, feriados, UVA). Los eventos sin dato público oficial vía API se muestran como "sin dato" — no se inventan cifras. Sin API key · se actualiza cada 60s.
+    Los eventos sin dato disponible se muestran como "sin dato" — no se inventan cifras. Se actualiza automáticamente.
     <div id="diagBox" style="margin-top:6px;"></div>
   </footer>
 
@@ -650,9 +650,9 @@ function renderKPIs(){
     const last = STATE.uva[STATE.uva.length-1];
     tiles.push({k:'UVA', v:'$'+fmt(last.valor,2), st:'', sub:'créditos y alquileres UVA · '+fmtDate(last.fecha)});
   }
-  if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):'fuente: Argly'}); }
-  if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'fuente: Argly', exp:'Lo mínimo para no caer en indigencia (una persona).'}); }
-  if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'fuente: Argly', exp:'Lo mínimo para no caer en pobreza (una persona).'}); }
+  if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):''}); }
+  if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'', exp:'Lo mínimo para no caer en indigencia (una persona).'}); }
+  if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'', exp:'Lo mínimo para no caer en pobreza (una persona).'}); }
   $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div>${t.exp?`<div class="exp">${t.exp}</div>`:''}</div>`).join('');
 }
 

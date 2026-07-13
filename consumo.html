@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consumo — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="consumo.html" class="active">Consumo</a>
+    <a href="hogar.html">Hogar</a>
+    <a href="finanzas.html">Finanzas</a>
+    <a href="calendario.html">Calendario</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>CONSUMO</h1>
+      <span class="eyebrow">canasta básica y precios · Argentina</span>
+    </div>
+  </header>
+
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi"><div class="k">Cargando</div><div class="v-row"><span class="v">…</span></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Canasta Básica <small id="canastaSub"></small></h2>
+    <div id="canastaBox"><div class="loading">Cargando…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Índice Changuito <small>próximamente</small></h2>
+    <div class="loading" style="text-align:left; padding:4px 0;">
+      La idea es armar un índice propio con precios de productos básicos de supermercado (pan, leche, aceite, arroz, etc.) para medir el costo real de vivir más allá de la canasta oficial. Todavía no hay una fuente de datos automatizable para esto — se necesitaría relevar precios de supermercados uno por uno, algo que ningún organismo público hace de forma abierta hoy. Queda anotado para cuando aparezca una fuente confiable.
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Medicamentos <small>próximamente</small></h2>
+    <div class="loading" style="text-align:left; padding:4px 0;">
+      Argly tiene un endpoint de medicamentos (<code class="mono">/v1/medicamentos?nombre=</code>), pero como bloquea CORS, hay que pasarlo por el scraper igual que el resto. No lo sumamos todavía porque necesita que definas qué medicamentos puntuales te interesa trackear — avisá cuáles y lo agregamos.
+    </div>
+  </div>
+
+  <footer>
+    Los valores de Canasta Básica se actualizan automáticamente una vez por día.
+  </footer>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtDate = (iso) => {
+  if(!iso) return '—';
+  const full = iso.length===7 ? iso+'-01' : iso;
+  return new Date(full+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
+};
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+let fsDb = null;
+if(typeof firebase !== 'undefined'){
+  try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
+  catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+}
+
+async function init(){
+  if(!fsDb){
+    $('canastaBox').innerHTML = '<div class="loading">No se pudo conectar con Firestore.</div>';
+    return;
+  }
+  try{
+    const snap = await fsDb.collection('indicadores').doc('canasta').get();
+    const u = snap.exists ? snap.data().ultimo : null;
+    if(!u){
+      $('canastaBox').innerHTML = '<div class="loading">Sin datos todavía. Corré el scraper (npm run mercado) al menos una vez.</div>';
+      return;
+    }
+
+    $('canastaSub').textContent = fmtDate(u.fecha);
+    $('kpiGrid').innerHTML = `
+      <div class="kpi"><div class="k">Canasta Básica Alimentaria</div><div class="v-row"><span class="v mono">$${fmt(u.cbaAdultoEquivalente,0)}</span></div><div class="sub">por adulto equivalente</div><div class="exp">Lo mínimo para no caer en indigencia.</div></div>
+      <div class="kpi"><div class="k">Canasta Básica Total</div><div class="v-row"><span class="v mono">$${fmt(u.cbtAdultoEquivalente,0)}</span></div><div class="sub">por adulto equivalente</div><div class="exp">Lo mínimo para no caer en pobreza.</div></div>
+    `;
+
+    const brecha = (u.cbtAdultoEquivalente && u.cbaAdultoEquivalente) ? (u.cbtAdultoEquivalente/u.cbaAdultoEquivalente) : null;
+    $('canastaBox').innerHTML = `
+      <div class="result-row"><span>CBA por adulto equivalente</span><span class="val mono">$${fmt(u.cbaAdultoEquivalente,0)}</span></div>
+      <div class="result-row"><span>CBT por adulto equivalente</span><span class="val mono">$${fmt(u.cbtAdultoEquivalente,0)}</span></div>
+      ${brecha ? `<div class="result-row"><span>Relación CBT / CBA</span><span class="val mono">${fmt(brecha,2)}x</span></div>` : ''}
+      <div class="note-box" style="background:var(--celeste-bg); border:1px solid var(--celeste); border-radius:8px; padding:12px 14px; font-size:12px; margin-top:12px; line-height:1.5;">
+        "Adulto equivalente" es la unidad que usa INDEC para comparar canastas entre distintos tipos de hogar (varía el cálculo real según cuántos adultos, niños, etc. viva en la casa) — este número es la referencia base por persona adulta.
+      </div>
+    `;
+  }catch(e){
+    console.error(e);
+    $('canastaBox').innerHTML = '<div class="loading">Error al leer la canasta.</div>';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
