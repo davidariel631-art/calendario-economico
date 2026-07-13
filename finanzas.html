@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/base.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   table{width:100%; border-collapse:collapse; margin-top:10px; font-size:12.5px;}
   th{text-align:left; font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); padding:8px; border-bottom:1px solid var(--line);}
@@ -86,45 +88,44 @@
 const $ = id => document.getElementById(id);
 const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
 
-let tasas = [];
-
-async function fetchConFallback(paths){
-  for(const path of paths){
-    try{
-      const res = await fetch(`https://api.bcra.gob.ar/transparencia/v1.0/${path}`);
-      if(res.ok){
-        const json = await res.json();
-        if(json?.results?.length) return json.results;
-      }
-    }catch(e){ /* probamos el siguiente candidato */ }
-  }
-  return null;
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+let fsDb = null;
+if(typeof firebase !== 'undefined'){
+  try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
+  catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
 }
 
-async function init(){
-  // No hay 100% de certeza sobre si el nombre del endpoint es "PlazoFijo" o
-  // "PlazosFijos" sin ejecutarlo en un navegador real — probamos ambos en
-  // vez de asumir, para no romper si el nombre correcto es el otro.
-  const data = await fetchConFallback(['PlazoFijo', 'PlazosFijos']);
+let tasas = [];
 
-  if(!data){
-    $('pfBox').innerHTML = '<div class="loading">No se pudo leer la API del BCRA en este momento.</div>';
-    $('pfWarning').style.display = 'block';
-    $('pfWarning').textContent = 'Si esto persiste, puede que el nombre exacto del endpoint sea distinto al esperado (PlazoFijo/PlazosFijos) — revisar el manual del desarrollador del BCRA para confirmarlo.';
+async function init(){
+  // Ya no le pedimos nada directo al BCRA desde acá: la API de Régimen de
+  // Transparencia corre server-side en el scraper (GitHub Actions) y se
+  // guarda en Firestore — es el mismo patrón que ya usamos para Reservas y
+  // Balance Cambiario, después de confirmar que casi ninguna API pública
+  // argentina deja que el navegador le pida datos directo (CORS).
+  if(!fsDb){
+    $('pfBox').innerHTML = '<div class="loading">No se pudo conectar con Firestore.</div>';
     return;
   }
-
-  tasas = data
-    .map(d => ({
-      entidad: d.entidad || d.descripcionEntidad || d.nombreEntidad || 'Entidad',
-      tasa: d.tnaClientes ?? d.tasaEfectivaAnual ?? d.tasa ?? d.tea ?? null,
-      montoMinimo: d.montoMinimo ?? null,
-    }))
-    .filter(t => typeof t.tasa === 'number' && t.tasa > 0)
-    .sort((a,b) => b.tasa - a.tasa);
+  try{
+    const snap = await fsDb.collection('indicadores').doc('plazos_fijos').get();
+    const data = snap.exists ? snap.data() : null;
+    tasas = data?.lista || [];
+  }catch(e){
+    console.warn('Firestore: no se pudo leer plazos_fijos:', e.message);
+  }
 
   if(!tasas.length){
-    $('pfBox').innerHTML = '<div class="loading">La API respondió pero no se pudo identificar el campo de la tasa. Revisar schema.</div>';
+    $('pfBox').innerHTML = '<div class="loading">Sin datos todavía en Firestore. Corré el scraper (npm run mercado) al menos una vez.</div>';
+    $('pfWarning').style.display = 'block';
+    $('pfWarning').textContent = 'Revisá que el workflow de GitHub Actions haya corrido correctamente y que las reglas de Firestore permitan lectura pública de "indicadores".';
     return;
   }
 

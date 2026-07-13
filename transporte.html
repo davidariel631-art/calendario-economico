@@ -76,26 +76,45 @@
 
 </div>
 
-<script src="assets/js/common.js"></script>
-<script src="assets/js/argly.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-let combustiblesData = null;
+const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+let fsDb = null;
+if(typeof firebase !== 'undefined'){
+  try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
+  catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+}
+
 let promedios = {};
 
+// Combustibles (Argly) bloquea CORS igual que el resto — se dejó de pedir
+// directo desde acá. El scraper trae el promedio de Buenos Aires una vez
+// por día y lo guarda en Firestore; acá solo lo leemos.
 async function init(){
+  if(!fsDb){
+    $('fuelGrid').innerHTML = '<div class="loading">No se pudo conectar con Firestore.</div>';
+    return;
+  }
   try{
-    combustiblesData = await getCombustibles();
-    if(!combustiblesData){
-      $('fuelGrid').innerHTML = '<div class="loading">No se pudo leer el precio de combustibles ahora mismo.</div>';
-      $('fuelWarning').style.display = 'block';
-      $('fuelWarning').textContent = 'Argly no devolvió datos de combustibles en este momento. Reintentá recargando la página en unos minutos.';
-      return;
-    }
-
-    promedios.super   = promedioCombustible(combustiblesData, /s[uú]per/i);
-    promedios.premium = promedioCombustible(combustiblesData, /premium|infinia|v-?power|ultra/i);
-    promedios.gasoil   = promedioCombustible(combustiblesData, /gasoil|diesel|di[eé]sel/i);
+    const snap = await fsDb.collection('indicadores').doc('combustibles').get();
+    const data = snap.exists ? snap.data() : null;
+    const precios = data?.precios || {};
+    promedios = {
+      super: typeof precios.super==='number' ? {valor:precios.super, muestras:null} : null,
+      premium: typeof precios.premium==='number' ? {valor:precios.premium, muestras:null} : null,
+      gasoil: typeof precios.gasoil==='number' ? {valor:precios.gasoil, muestras:null} : null,
+    };
 
     const nombres = {super:'Nafta Súper', premium:'Nafta Premium', gasoil:'Gasoil'};
     let html = '';
@@ -106,7 +125,7 @@ async function init(){
         html += `<div class="fuel-card">
           <div class="name">${nombres[key]}</div>
           <div class="price mono">$${fmt(p.valor,1)}</div>
-          <div class="note">promedio de ${p.muestras} estaciones</div>
+          <div class="note">promedio Buenos Aires</div>
         </div>`;
       } else {
         algunaFalta = true;
@@ -118,13 +137,16 @@ async function init(){
       }
     }
     $('fuelGrid').innerHTML = html;
-    $('fuelSub').textContent = `${combustiblesData.length} estaciones relevadas`;
-    if(algunaFalta){
+    $('fuelSub').textContent = data ? `actualizado ${new Date(data.scrapedAt).toLocaleDateString('es-AR')}` : '';
+    if(!data){
       $('fuelWarning').style.display = 'block';
-      $('fuelWarning').textContent = 'Algunos tipos de combustible no se pudieron identificar en la respuesta de Argly — puede que el nombre del producto no coincida con lo esperado. No se muestra un precio inventado para esos casos.';
+      $('fuelWarning').textContent = 'Sin datos todavía en Firestore. Corré el scraper (npm run mercado) al menos una vez.';
+    } else if(algunaFalta){
+      $('fuelWarning').style.display = 'block';
+      $('fuelWarning').textContent = 'Algún tipo de combustible no se pudo leer de Argly en la última corrida del scraper.';
     }
   }catch(e){
-    $('fuelGrid').innerHTML = '<div class="loading">Error al cargar combustibles.</div>';
+    $('fuelGrid').innerHTML = '<div class="loading">Error al leer combustibles.</div>';
     console.error(e);
   }
 }
@@ -143,7 +165,7 @@ function calcularTanque(){
   const costo = litros * p.valor;
   $('rCostoHoy').textContent = '$' + fmt(costo, 0);
   $('rPrecioUsado').textContent = '$' + fmt(p.valor, 1) + ' / litro';
-  $('rMuestras').textContent = p.muestras + ' estaciones';
+  $('rMuestras').textContent = 'Buenos Aires (referencia)';
   $('resultBox').style.display = 'block';
 }
 

@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/base.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -69,36 +71,51 @@
 const $ = id => document.getElementById(id);
 const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
 
+const firebaseConfig = {
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+};
+let fsDb = null;
+if(typeof firebase !== 'undefined'){
+  try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
+  catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+}
+
 let iclHist = [], uvaHist = [];
 
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-async function fetchConProxy(url){
+// ICL y UVA ya no se piden directo a ArgentinaDatos/Argly desde acá — las
+// dos bloquean CORS para el navegador. El scraper las trae server-side
+// (GitHub Actions) y las guarda en Firestore con un historico/{fecha} por
+// cada corrida; acá solo leemos esa serie.
+async function leerHistoricoFS(key){
+  if(!fsDb) return [];
   try{
-    const res = await fetch(url);
-    if(res.ok) return await res.json();
-  }catch(e){ /* probamos el proxy abajo */ }
-  try{
-    const res2 = await fetch(CORS_PROXY + encodeURIComponent(url));
-    if(res2.ok) return await res2.json();
-  }catch(e2){ /* nos rendimos */ }
-  return [];
+    const snap = await fsDb.collection('indicadores').doc(key).collection('historico')
+      .orderBy(firebase.firestore.FieldPath.documentId(), 'asc').limit(200).get();
+    return snap.docs.map(d=>d.data()).filter(d=>typeof d.valor==='number' && d.fecha);
+  }catch(e){ console.warn(`Firestore: no se pudo leer histórico de ${key}:`, e.message); return []; }
 }
 
 async function cargarIndices(){
+  if(!fsDb){
+    $('kpiGrid').innerHTML = '<div class="loading">No se pudo conectar con Firestore.</div>';
+    return;
+  }
   try{
-    const [icl, uva] = await Promise.all([
-      fetchConProxy('https://api.argentinadatos.com/v1/finanzas/indices/icl'),
-      fetchConProxy('https://api.argentinadatos.com/v1/finanzas/indices/uva'),
-    ]);
-    iclHist = [...icl].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-    uvaHist = [...uva].sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    const [icl, uva] = await Promise.all([leerHistoricoFS('icl'), leerHistoricoFS('uva')]);
+    iclHist = icl; uvaHist = uva;
 
     const tiles = [];
     if(iclHist.length){ const last = iclHist[iclHist.length-1]; tiles.push({k:'ICL hoy', v:fmt(last.valor,2), sub:last.fecha}); }
     if(uvaHist.length){ const last = uvaHist[uvaHist.length-1]; tiles.push({k:'UVA hoy', v:'$'+fmt(last.valor,2), sub:last.fecha}); }
-    $('kpiGrid').innerHTML = tiles.length ? tiles.map(t=>`<div class="kpi"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub}</div></div>`).join('') : '<div class="loading">No se pudieron cargar los índices.</div>';
-  }catch(e){ console.error(e); }
+    $('kpiGrid').innerHTML = tiles.length ? tiles.map(t=>`<div class="kpi"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub}</div></div>`).join('') : '<div class="loading">Sin datos todavía en Firestore. Corré el scraper (npm run mercado) al menos una vez.</div>';
+  }catch(e){ console.error(e); $('kpiGrid').innerHTML = '<div class="loading">Error al leer los índices.</div>'; }
 }
+
 
 function valorMasCercano(hist, fechaBuscada){
   // Busca el valor del índice más cercano (hacia atrás) a una fecha dada,
