@@ -30,6 +30,7 @@
     <a href="hogar.html">Hogar</a>
     <a href="finanzas.html" class="active">Finanzas</a>
     <a href="calendario.html">Calendario</a>
+    <a href="glosario.html">Glosario</a>
   </nav>
 
   <header>
@@ -72,6 +73,37 @@
   </div>
 
   <div class="panel">
+    <h2>Simulador de crédito UVA</h2>
+    <div class="field">
+      <label for="uvaCantidad">Cantidad de UVAs de tu crédito</label>
+      <input type="number" id="uvaCantidad" placeholder="ej: 150000" min="0">
+    </div>
+    <div class="field">
+      <label for="uvaInflacionMensual">Inflación mensual esperada para la proyección (%)</label>
+      <input type="number" id="uvaInflacionMensual" placeholder="ej: 2" step="0.1" min="0" value="2">
+    </div>
+    <div class="field">
+      <label for="uvaMeses">Proyectar a cuántos meses</label>
+      <select id="uvaMeses">
+        <option value="6">6 meses</option>
+        <option value="12" selected>12 meses</option>
+        <option value="24">24 meses</option>
+      </select>
+    </div>
+    <button class="btn" onclick="calcularUVA()">Simular evolución de la cuota</button>
+    <div class="result-box" id="uvaResultBox" style="display:none;">
+      <div class="result-row"><span>Valor UVA hoy</span><span class="val mono" id="uvaValorHoy">—</span></div>
+      <div class="result-row"><span>Cuota equivalente hoy</span><span class="val mono" id="uvaCuotaHoy">—</span></div>
+      <div class="result-row"><span>Valor UVA proyectado</span><span class="val mono" id="uvaValorProyectado">—</span></div>
+      <div class="result-row"><span>Cuota proyectada</span><span class="val mono up" id="uvaCuotaProyectada">—</span></div>
+      <div class="result-row"><span>Aumento de la cuota</span><span class="val mono up" id="uvaAumento">—</span></div>
+    </div>
+    <div class="note-box">
+      Esto es una <b>proyección educativa</b>, no una promesa: asume que la inflación mensual que pusiste se mantiene constante todos los meses, algo que en la realidad casi nunca pasa exactamente así. Sirve para entender el mecanismo (tu cuota sube con la inflación, no es una cuota fija como un crédito tradicional), no para planificar tus finanzas al centavo.
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>Billeteras virtuales (Mercado Pago, Ualá, Personal Pay, Naranja X)</h2>
     <div class="note-box" style="background:var(--red-bg); border-color:var(--red);">
       <b>Esto no está automatizado, y probablemente nunca lo esté de forma 100% confiable.</b> Los rendimientos de billeteras virtuales no son un dato regulado con API pública como el plazo fijo bancario — cada empresa lo muestra solo en su propia app, cambia seguido, y no hay ninguna fuente oficial centralizada (ni siquiera el Régimen de Transparencia del BCRA los cubre, porque no son depósitos a plazo fijo tradicionales). La opción realista acá es cargarlo a mano de vez en cuando, o directamente aceptar que para esto conviene mirar la app de cada billetera.
@@ -104,6 +136,8 @@ if(typeof firebase !== 'undefined'){
 
 let tasas = [];
 
+let valorUvaHoy = null;
+
 async function init(){
   // Ya no le pedimos nada directo al BCRA desde acá: la API de Régimen de
   // Transparencia corre server-side en el scraper (GitHub Actions) y se
@@ -114,6 +148,12 @@ async function init(){
     $('pfBox').innerHTML = '<div class="loading">No se pudo conectar con Firestore.</div>';
     return;
   }
+
+  await cargarPlazosFijos();
+  await cargarUVA();
+}
+
+async function cargarPlazosFijos(){
   try{
     const snap = await fsDb.collection('indicadores').doc('plazos_fijos').get();
     const data = snap.exists ? snap.data() : null;
@@ -153,6 +193,38 @@ function calcularRendimiento(){
   $('rInteres').textContent = '$' + fmt(interes,0);
   $('rTotal').textContent = '$' + fmt(monto+interes,0);
   $('resultBox').style.display = 'block';
+}
+
+async function cargarUVA(){
+  try{
+    const snap = await fsDb.collection('indicadores').doc('uva').get();
+    const u = snap.exists ? snap.data().ultimo : null;
+    valorUvaHoy = (u && typeof u.valor === 'number') ? u.valor : null;
+  }catch(e){
+    console.warn('Firestore: no se pudo leer uva:', e.message);
+  }
+}
+
+function calcularUVA(){
+  const cantidadUva = parseFloat($('uvaCantidad').value);
+  const inflacionMensual = parseFloat($('uvaInflacionMensual').value);
+  const meses = parseInt($('uvaMeses').value);
+
+  if(!cantidadUva || cantidadUva <= 0){ alert('Ingresá la cantidad de UVAs de tu crédito.'); return; }
+  if(!valorUvaHoy){ alert('Todavía no tenemos el valor de la UVA cargado — corré el scraper (npm run mercado) al menos una vez.'); return; }
+  if(isNaN(inflacionMensual) || inflacionMensual < 0){ alert('Ingresá una inflación mensual válida.'); return; }
+
+  const cuotaHoy = cantidadUva * valorUvaHoy;
+  const valorUvaProyectado = valorUvaHoy * Math.pow(1 + inflacionMensual/100, meses);
+  const cuotaProyectada = cantidadUva * valorUvaProyectado;
+  const aumentoPct = ((cuotaProyectada - cuotaHoy)/cuotaHoy) * 100;
+
+  $('uvaValorHoy').textContent = '$' + fmt(valorUvaHoy,2);
+  $('uvaCuotaHoy').textContent = '$' + fmt(cuotaHoy,0);
+  $('uvaValorProyectado').textContent = '$' + fmt(valorUvaProyectado,2);
+  $('uvaCuotaProyectada').textContent = '$' + fmt(cuotaProyectada,0);
+  $('uvaAumento').textContent = '+' + fmt(aumentoPct,1) + '%';
+  $('uvaResultBox').style.display = 'block';
 }
 
 init();

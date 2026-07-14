@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glosario — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<style>
+  .search-box{margin-bottom:16px;}
+  .search-box input{
+    width:100%; background:var(--bg-2); border:1px solid var(--line); color:var(--chalk);
+    padding:12px 14px; border-radius:8px; font-family:inherit; font-size:14px;
+  }
+  .search-box input:focus{outline:none; border-color:var(--celeste);}
+  .term-card{
+    background:var(--panel-2); border:1px solid var(--line); border-left:3px solid var(--celeste); border-radius:8px;
+    padding:14px 16px; margin-bottom:10px; transition:transform .18s ease, box-shadow .18s ease;
+  }
+  .term-card:hover{transform:translateY(-2px); box-shadow:0 10px 22px -10px rgba(0,0,0,.5);}
+  .term-card .sigla{font-family:ui-monospace,monospace; font-weight:800; font-size:15px; color:var(--celeste);}
+  .term-card .nombre-completo{font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-top:2px;}
+  .term-card .explicacion{font-size:13px; color:var(--chalk); line-height:1.55; margin-top:8px;}
+  .term-card .categoria-tag{
+    display:inline-block; font-size:9px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim);
+    background:var(--bg-2); border:1px solid var(--line); border-radius:3px; padding:1px 6px; margin-top:8px;
+  }
+  #noResults{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="consumo.html">Consumo</a>
+    <a href="hogar.html">Hogar</a>
+    <a href="finanzas.html">Finanzas</a>
+    <a href="calendario.html">Calendario</a>
+    <a href="glosario.html" class="active">Glosario</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>GLOSARIO</h1>
+      <span class="eyebrow">economía en criollo · sin jerga</span>
+    </div>
+  </header>
+
+  <div class="search-box">
+    <input type="text" id="buscador" placeholder="Buscá un término: dólar, UVA, brecha, riesgo país..." oninput="filtrar()">
+  </div>
+
+  <div id="listado"></div>
+  <div class="loading" id="noResults">No encontramos ningún término que coincida con esa búsqueda.</div>
+
+  <footer style="margin-top:8px;">
+    Este glosario explica los términos con el criterio de "se lo explico a alguien sin conocimientos de economía" — no reemplaza una definición técnica formal.
+  </footer>
+
+</div>
+
+<script>
+const TERMINOS = [
+  {sigla:'Dólar Oficial', nombre:'Tipo de cambio oficial', categoria:'Dólar',
+    texto:'El precio del dólar que fija el Banco Central. Es el que se usa para el comercio exterior y como referencia oficial del Estado. No es el que rige para comprar dólares libremente.'},
+  {sigla:'Dólar Blue', nombre:'Dólar paralelo / informal', categoria:'Dólar',
+    texto:'El precio del dólar en el mercado informal ("cueva"), fuera del sistema bancario. Existe porque hay más gente que quiere comprar dólares de la que el Estado permite comprar al oficial.'},
+  {sigla:'Dólar MEP', nombre:'Mercado Electrónico de Pagos', categoria:'Dólar',
+    texto:'Una forma legal de comprar dólares a través de la Bolsa: comprás un bono en pesos y lo vendés en dólares. Es más caro que el oficial pero legal y sin límite de monto (a diferencia del oficial).'},
+  {sigla:'Dólar CCL', nombre:'Contado con Liquidación', categoria:'Dólar',
+    texto:'Parecido al MEP, pero permite sacar los dólares fuera del país (a una cuenta en el exterior). Lo suelen usar empresas o personas que quieren tener dólares afuera de Argentina.'},
+  {sigla:'Brecha cambiaria', nombre:'Brecha entre dólar oficial y blue', categoria:'Dólar',
+    texto:'La diferencia porcentual entre el dólar oficial y el blue (o MEP). Una brecha alta suele ser señal de que el mercado no confía en que el dólar oficial sea "el precio real".'},
+  {sigla:'IPC', nombre:'Índice de Precios al Consumidor', categoria:'Inflación',
+    texto:'Mide cuánto subieron en promedio los precios de todo lo que comprás en un mes. Es la forma oficial de medir la inflación mensual, y la calcula INDEC.'},
+  {sigla:'Inflación interanual', nombre:'Variación de precios en 12 meses', categoria:'Inflación',
+    texto:'Cuánto subieron los precios comparando con el mismo mes del año pasado. Es un número más "acumulado" que el IPC mensual, y da una idea de la inflación a lo largo de todo el año.'},
+  {sigla:'EMAE', nombre:'Estimador Mensual de Actividad Económica', categoria:'Actividad',
+    texto:'Es el termómetro mensual de la economía: mide si el país produjo y vendió más o menos que el mes anterior. Es un adelanto rápido de lo que después se ve reflejado en el PBI.'},
+  {sigla:'Riesgo País', nombre:'EMBI+ Argentina', categoria:'Deuda',
+    texto:'Mide cuánto interés extra le exigen los inversores a Argentina para prestarle plata, comparado con EE.UU. (que se considera "sin riesgo"). Cuanto más alto, más caro es para el país conseguir crédito internacional.'},
+  {sigla:'UVA', nombre:'Unidad de Valor Adquisitivo', categoria:'Créditos y alquiler',
+    texto:'Una unidad que se ajusta todos los días según la inflación. Se usa para créditos hipotecarios UVA y para actualizar algunos contratos de alquiler — si tenés un crédito UVA, tu cuota sube con la inflación.'},
+  {sigla:'UVI', nombre:'Unidad de Vivienda', categoria:'Créditos y alquiler',
+    texto:'Muy similar a la UVA, pero se ajusta por el Coeficiente de Estabilización de Referencia (CER) en vez de directamente por inflación diaria. Se usa en algunos créditos hipotecarios.'},
+  {sigla:'ICL', nombre:'Índice para Contratos de Locación', categoria:'Créditos y alquiler',
+    texto:'El índice oficial del BCRA para ajustar contratos de alquiler bajo la Ley de Alquileres. Combina inflación y evolución salarial.'},
+  {sigla:'CER', nombre:'Coeficiente de Estabilización de Referencia', categoria:'Créditos y alquiler',
+    texto:'Un índice que sigue de cerca a la inflación, usado para ajustar deuda pública y algunos préstamos. Es la "vara" con la que se actualizan muchos contratos financieros en pesos.'},
+  {sigla:'SMVM', nombre:'Salario Mínimo, Vital y Móvil', categoria:'Ingresos',
+    texto:'El piso legal de lo que se le puede pagar a un trabajador en blanco por mes. Lo fija el Consejo del Salario, y muchos otros valores (como becas o multas) se calculan como un múltiplo del SMVM.'},
+  {sigla:'CBA', nombre:'Canasta Básica Alimentaria', categoria:'Pobreza',
+    texto:'El costo mínimo de los alimentos que necesita una persona para no estar en indigencia. Si el ingreso de una familia no llega a cubrir la CBA multiplicada por sus integrantes, se la considera en indigencia.'},
+  {sigla:'CBT', nombre:'Canasta Básica Total', categoria:'Pobreza',
+    texto:'Lo mismo que la CBA pero sumando además vivienda, transporte, salud, educación, etc. Si el ingreso familiar no cubre la CBT, se considera que la familia está en situación de pobreza.'},
+  {sigla:'REM', nombre:'Relevamiento de Expectativas de Mercado', categoria:'Expectativas',
+    texto:'Una encuesta mensual del BCRA a bancos y consultoras, preguntándoles qué esperan que pase con la inflación, el dólar y la actividad económica. Es el "pronóstico del tiempo" de la economía — una expectativa, no un hecho.'},
+  {sigla:'Balance Cambiario', nombre:'Mercado Único y Libre de Cambios (MULC)', categoria:'Dólar',
+    texto:'El registro de cuántos dólares entraron (por exportaciones) y salieron (por importaciones, turismo, ahorro) del país en el mes, a través del circuito oficial.'},
+  {sigla:'Resultado Fiscal', nombre:'Superávit / Déficit fiscal', categoria:'Cuentas públicas',
+    texto:'La diferencia entre lo que el Estado gasta y lo que recauda. Si gasta menos de lo que recauda, hay superávit (ahorra); si gasta más, hay déficit (necesita emitir pesos o tomar deuda para cubrir la diferencia).'},
+  {sigla:'Reservas Internacionales', nombre:'Reservas del BCRA', categoria:'Dólar',
+    texto:'Los dólares (y otros activos) que tiene guardados el Banco Central para poder responder pagos y, si quiere, intervenir en el mercado cambiario. Reservas altas dan más margen de maniobra frente a corridas.'},
+  {sigla:'Plazo Fijo', nombre:'Depósito a plazo fijo', categoria:'Ahorro e inversión',
+    texto:'Dejás tu plata en el banco por un tiempo fijo (30, 60, 90 días) y el banco te paga un interés a cambio. Cuanto más alta la Tasa Efectiva Anual (TEA), más rinde tu dinero.'},
+  {sigla:'TNA', nombre:'Tasa Nominal Anual', categoria:'Ahorro e inversión',
+    texto:'La tasa de interés "simple" anualizada, sin tener en cuenta el efecto de la capitalización (interés sobre interés). Suele ser más baja que la TEA para el mismo producto.'},
+  {sigla:'TEA', nombre:'Tasa Efectiva Anual', categoria:'Ahorro e inversión',
+    texto:'La tasa de interés anual real, ya considerando que los intereses se van sumando al capital (interés compuesto). Es la que mejor compara distintos plazos fijos entre sí.'},
+];
+
+function render(lista){
+  const el = document.getElementById('listado');
+  document.getElementById('noResults').style.display = lista.length ? 'none' : 'block';
+  el.innerHTML = lista.map(t => `
+    <div class="term-card">
+      <div class="sigla">${t.sigla}</div>
+      <div class="nombre-completo">${t.nombre}</div>
+      <div class="explicacion">${t.texto}</div>
+      <span class="categoria-tag">${t.categoria}</span>
+    </div>
+  `).join('');
+}
+
+function filtrar(){
+  const q = document.getElementById('buscador').value.toLowerCase().trim();
+  if(!q){ render(TERMINOS); return; }
+  const filtrados = TERMINOS.filter(t =>
+    t.sigla.toLowerCase().includes(q) ||
+    t.nombre.toLowerCase().includes(q) ||
+    t.texto.toLowerCase().includes(q) ||
+    t.categoria.toLowerCase().includes(q)
+  );
+  render(filtrados);
+}
+
+render(TERMINOS);
+
+// Si venimos de un link tipo glosario.html?q=Riesgo%20País, precargamos la búsqueda.
+const paramsUrl = new URLSearchParams(location.search);
+const qUrl = paramsUrl.get('q');
+if(qUrl){
+  document.getElementById('buscador').value = qUrl;
+  filtrar();
+}
+</script>
+</body>
+</html>

@@ -224,6 +224,7 @@
     <a href="hogar.html">Hogar</a>
     <a href="finanzas.html">Finanzas</a>
     <a href="calendario.html">Calendario</a>
+    <a href="glosario.html">Glosario</a>
   </nav>
 
   <header>
@@ -235,6 +236,7 @@
       <span><span class="dot-live"></span><span id="lastUpdate">conectando…</span></span>
       <span class="time mono" id="clock">--:--:--</span>
       <button class="refresh-btn" onclick="loadAll()">↻ Actualizar</button>
+      <button class="refresh-btn" onclick="compartirWhatsApp()">Compartir</button>
     </div>
   </header>
 
@@ -267,9 +269,9 @@
 
     <div>
       <div class="panel"><h2>Semáforo económico</h2><div id="semaforoBox"><div class="loading">cargando…</div></div></div>
-      <div class="panel"><h2>Riesgo país <small id="riesgoSub"></small></h2><div id="riesgoBox"><div class="loading">cargando…</div></div></div>
+      <div class="panel"><h2>Riesgo país <small id="riesgoSub"></small></h2><div id="riesgoBox"><div class="loading">cargando…</div></div><button class="refresh-btn" style="margin-top:8px; width:100%;" onclick="exportarCSV('riesgo')">⬇ Exportar historial (CSV)</button></div>
       <div class="panel"><h2>Brecha cambiaria</h2><div id="brechaBox"><div class="loading">cargando…</div></div></div>
-      <div class="panel"><h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2><div id="inflacionBox"><div class="loading">cargando…</div></div></div>
+      <div class="panel"><h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2><div id="inflacionBox"><div class="loading">cargando…</div></div><button class="refresh-btn" style="margin-top:8px; width:100%;" onclick="exportarCSV('inflacion')">⬇ Exportar historial (CSV)</button></div>
       <div class="panel"><h2>Próximos feriados</h2><div id="feriadosBox"><div class="loading">cargando…</div></div></div>
     </div>
   </div>
@@ -665,7 +667,7 @@ function renderKPIs(){
   if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):''}); }
   if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'', exp:'Lo mínimo para no caer en indigencia (una persona).'}); }
   if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'', exp:'Lo mínimo para no caer en pobreza (una persona).'}); }
-  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k}</div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div>${t.exp?`<div class="exp">${t.exp}</div>`:''}</div>`).join('');
+  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k} <a href="glosario.html?q=${encodeURIComponent(t.k)}" style="color:var(--dim); text-decoration:none;" title="Qué significa">ⓘ</a></div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div>${t.exp?`<div class="exp">${t.exp}</div>`:''}</div>`).join('');
 }
 
 function renderResumen(){
@@ -1109,6 +1111,43 @@ function renderDiagnostico(){
     const icon = err===null || err===undefined ? '✅' : '❌';
     return `<span title="${err||'ok'}" style="margin-right:10px;">${icon} ${s.label}</span>`;
   }).join('');
+}
+
+function exportarCSV(tipo){
+  let filas, nombreArchivo;
+  if(tipo==='riesgo'){
+    filas = (STATE.riesgoHist||[]).map(h => `${h.fecha},${h.valor}`);
+    nombreArchivo = 'riesgo-pais-historico.csv';
+  } else {
+    filas = (STATE.inflMensual||[]).map(h => `${h.fecha},${h.valor}`);
+    nombreArchivo = 'ipc-mensual-historico.csv';
+  }
+  if(!filas.length){ alert('Todavía no hay historial cargado para exportar.'); return; }
+
+  const csv = 'fecha,valor\n' + filas.join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombreArchivo;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function compartirWhatsApp(){
+  const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
+  const partes = ['📊 Economía Argentina — resumen de hoy'];
+  if(byCasa.oficial) partes.push(`Dólar oficial: $${fmt(byCasa.oficial.venta)}`);
+  if(byCasa.blue) partes.push(`Dólar blue: $${fmt(byCasa.blue.venta)}`);
+  if(byCasa.bolsa) partes.push(`Dólar MEP: $${fmt(byCasa.bolsa.venta)}`);
+  if(STATE.riesgo) partes.push(`Riesgo país: ${fmt(STATE.riesgo.valor,0)} pb`);
+  if(STATE.inflMensual && STATE.inflMensual.length){
+    const last = STATE.inflMensual[STATE.inflMensual.length-1];
+    partes.push(`IPC mensual: ${fmt(last.valor,1)}%`);
+  }
+  partes.push('');
+  partes.push(location.href);
+  const texto = encodeURIComponent(partes.join('\n'));
+  window.open(`https://wa.me/?text=${texto}`, '_blank');
 }
 
 async function loadAll(){

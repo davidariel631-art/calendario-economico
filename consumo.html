@@ -20,6 +20,7 @@
     <a href="hogar.html">Hogar</a>
     <a href="finanzas.html">Finanzas</a>
     <a href="calendario.html">Calendario</a>
+    <a href="glosario.html">Glosario</a>
   </nav>
 
   <header>
@@ -36,6 +37,32 @@
   <div class="panel">
     <h2>Canasta Básica <small id="canastaSub"></small></h2>
     <div id="canastaBox"><div class="loading">Cargando…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Calculadora de propina y división de cuenta</h2>
+    <div class="field">
+      <label for="propMonto">Total de la cuenta</label>
+      <input type="number" id="propMonto" placeholder="ej: 45000" min="0">
+    </div>
+    <div class="field">
+      <label for="propPorcentaje">Propina</label>
+      <select id="propPorcentaje">
+        <option value="10" selected>10% (estándar)</option>
+        <option value="15">15%</option>
+        <option value="0">Sin propina</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="propPersonas">Dividir entre cuántas personas</label>
+      <input type="number" id="propPersonas" placeholder="ej: 4" min="1" value="1">
+    </div>
+    <button class="btn" onclick="calcularPropina()">Calcular</button>
+    <div class="result-box" id="propResultBox" style="display:none;">
+      <div class="result-row"><span>Propina</span><span class="val mono" id="propPropina">—</span></div>
+      <div class="result-row"><span>Total con propina</span><span class="val mono" id="propTotal">—</span></div>
+      <div class="result-row"><span>Por persona</span><span class="val mono" id="propPorPersona">—</span></div>
+    </div>
   </div>
 
   <div class="panel">
@@ -79,6 +106,22 @@ let fsDb = null;
 if(typeof firebase !== 'undefined'){
   try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
   catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
+}
+
+function calcularPropina(){
+  const monto = parseFloat($('propMonto').value);
+  const pct = parseFloat($('propPorcentaje').value);
+  const personas = parseInt($('propPersonas').value) || 1;
+  if(!monto || monto <= 0){ alert('Ingresá el total de la cuenta.'); return; }
+
+  const propina = monto * (pct/100);
+  const total = monto + propina;
+  const porPersona = total / personas;
+
+  $('propPropina').textContent = '$' + fmt(propina,0);
+  $('propTotal').textContent = '$' + fmt(total,0);
+  $('propPorPersona').textContent = '$' + fmt(porPersona,0);
+  $('propResultBox').style.display = 'block';
 }
 
 async function init(){
