@@ -7,8 +7,9 @@
     "reservas": "node scripts/scrape-bcra-reservas.js",
     "cambiario": "node scripts/scrape-bcra-balance-cambiario.js",
     "mercado": "node scripts/scrape-indicadores-mercado.js",
+    "noticias": "node scripts/scrape-noticias.js",
     "backfill": "node scripts/backfill-historico.js",
-    "all": "npm run reservas && npm run cambiario && npm run mercado"
+    "all": "npm run reservas && npm run cambiario && npm run mercado && npm run noticias"
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",

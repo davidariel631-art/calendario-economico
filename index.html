@@ -258,6 +258,11 @@
           <span><i style="background:var(--dim)"></i> Informativo</span>
         </div>
       </div>
+
+      <div class="panel">
+        <h2>Noticias Inteligentes <small id="noticiasSub"></small></h2>
+        <div id="noticiasBox"><div class="loading">cargando…</div></div>
+      </div>
     </div>
 
     <div>
@@ -557,6 +562,13 @@ async function loadSMVM(){
   return STATE.smvm;
 }
 
+async function loadNoticias(){
+  const doc = await leerIndicadorFS('noticias');
+  STATE.noticias = doc?.lista || [];
+  STATE.errors.noticias = doc ? null : 'Sin dato en Firestore (indicadores/noticias) — corré "npm run noticias" al menos una vez.';
+  return STATE.noticias;
+}
+
 async function loadCanasta(){
   const doc = await leerIndicadorFS('canasta');
   const u = doc?.ultimo;
@@ -706,14 +718,27 @@ function renderRiesgo(){
     }
     return;
   }
-  const hist = (STATE.riesgoHist||[]).slice(-40); const values = hist.map(h=>h.valor);
+  const histFull = STATE.riesgoHist||[];
+  const hist = histFull.slice(-40); const values = hist.map(h=>h.valor);
   const prev = (typeof STATE.riesgoAnteriorArgly === 'number') ? STATE.riesgoAnteriorArgly
     : (hist.length>1 ? hist[hist.length-2].valor : null);
   const delta = prev!==null? STATE.riesgo.valor-prev : null; const st = statusClass(delta);
   $('riesgoSub').textContent = fmtDate(STATE.riesgo.fecha);
+
+  let statsHtml = '';
+  if(histFull.length>5){
+    const vals = histFull.map(h=>h.valor);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const prom = vals.reduce((a,b)=>a+b,0)/vals.length;
+    statsHtml = `<div class="chart-caption" style="margin-top:8px; justify-content:space-between;">
+      <span>Mín: ${fmt(min,0)}</span><span>Prom: ${fmt(prom,0)}</span><span>Máx: ${fmt(max,0)}</span>
+    </div>`;
+  }
+
   $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v mono">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta mono">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
     <div class="chart-card">${sparkline(values)}</div>
-    <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>`;
+    <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>
+    ${statsHtml}`;
 }
 
 function renderBrecha(){
@@ -751,6 +776,23 @@ function renderFeriados(){
   const data = STATE.feriados||[]; const today = new Date(); today.setHours(0,0,0,0);
   const upcoming = data.filter(f=> new Date(f.fecha+'T12:00:00') >= today).slice(0,5);
   $('feriadosBox').innerHTML = upcoming.length ? upcoming.map(f=>`<div class="feriado-row"><span>${f.nombre}</span><span class="fdate">${fmtDate(f.fecha)}</span></div>`).join('') : `<div class="sub">No quedan feriados este año.</div>`;
+}
+
+function renderNoticias(){
+  const lista = STATE.noticias||[];
+  if(!lista.length){
+    $('noticiasBox').innerHTML = STATE.errors.noticias
+      ? `<div class="loading">Todavía no hay resúmenes generados.</div>`
+      : `<div class="loading">Sin noticias por ahora.</div>`;
+    return;
+  }
+  $('noticiasSub').textContent = 'resumen automático, generado por IA';
+  $('noticiasBox').innerHTML = lista.map(n => `
+    <div style="padding:9px 2px; border-bottom:1px dashed var(--line);">
+      <div style="font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px;">${n.titulo}</div>
+      <div style="font-size:13px; color:var(--chalk); line-height:1.45;">${n.resumen}</div>
+    </div>
+  `).join('');
 }
 
 /* ---------------- CALENDARIO: TARJETAS ---------------- */
@@ -1060,6 +1102,7 @@ function renderDiagnostico(){
     {k:'emae', label:'EMAE'},
     {k:'smvm', label:'SMVM (Argly)'},
     {k:'canasta', label:'Canasta (Argly)'},
+    {k:'noticias', label:'Noticias IA'},
   ];
   $('diagBox').innerHTML = sources.map(s=>{
     const err = STATE.errors[s.k];
@@ -1070,9 +1113,9 @@ function renderDiagnostico(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
-  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderCalendario(); renderDiagnostico();
+  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
 }
 loadAll();
