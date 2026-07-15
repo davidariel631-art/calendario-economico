@@ -64,11 +64,24 @@ ${listado}`;
   return JSON.parse(match[0]);
 }
 
-async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('Falta la variable de entorno ANTHROPIC_API_KEY (secret de GitHub).');
-  }
+// Modo gratis (sin IA): si no hay ANTHROPIC_API_KEY, o si Anthropic falla
+// por falta de saldo, elegimos las noticias más relevantes con un filtro
+// de palabras clave simple, sin pedir nada pago. No queda tan "inteligente"
+// como el resumen de la IA, pero nunca deja el workflow en rojo por plata.
+const PALABRAS_CLAVE = /dólar|inflaci[oó]n|precio|salario|impuesto|tarifa|jubilaci[oó]n|monotributo|combustible|nafta|alquiler|canasta/i;
 
+function elegirSinIA(items) {
+  const relevantes = items.filter(it => PALABRAS_CLAVE.test(it.titulo) || PALABRAS_CLAVE.test(it.descripcion));
+  const elegidos = (relevantes.length ? relevantes : items).slice(0, 5);
+  return elegidos.map(it => ({
+    titulo: it.titulo,
+    // Sin IA no parafraseamos — mostramos la descripción original del RSS tal cual
+    // (o el título si no hay descripción), aclarando que es la fuente original.
+    resumen: it.descripcion || it.titulo,
+  }));
+}
+
+async function main() {
   console.log('Descargando RSS de Ámbito Economía...');
   const res = await fetch(RSS_URL, {
     headers: {
@@ -83,13 +96,28 @@ async function main() {
   const items = extraerItems(xml);
   if (!items.length) throw new Error('No se encontraron noticias en el RSS.');
 
-  console.log(`Encontradas ${items.length} noticias, pidiendo resumen a Claude...`);
-  const resumen = await pedirResumenIA(items);
+  let resumen, metodo;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.log('No hay ANTHROPIC_API_KEY configurada — uso el modo gratis (sin IA).');
+    resumen = elegirSinIA(items);
+    metodo = 'sin_ia';
+  } else {
+    try {
+      console.log(`Encontradas ${items.length} noticias, pidiendo resumen a Claude...`);
+      resumen = await pedirResumenIA(items);
+      metodo = 'ia';
+    } catch (err) {
+      console.warn('⚠️  Falló el resumen con IA (' + err.message + '). Uso el modo gratis como respaldo.');
+      resumen = elegirSinIA(items);
+      metodo = 'sin_ia_respaldo';
+    }
+  }
 
   const db = getDb();
   await db.collection('indicadores').doc('noticias').set({
     lista: resumen,
-    fuente: 'Ámbito (RSS) + resumen generado por IA',
+    metodo,
+    fuente: metodo === 'ia' ? 'Ámbito (RSS) + resumen generado por IA' : 'Ámbito (RSS) — titulares originales, sin resumen de IA',
     scrapedAt: new Date().toISOString(),
   }, { merge: true });
 

@@ -137,6 +137,13 @@
 
 <script>
 const $ = id => document.getElementById(id);
+function escapeHtml(str){
+  if(str===null||str===undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
 
 const firebaseConfig = {
@@ -193,7 +200,7 @@ async function cargarPlazosFijos(){
     <table>
       <thead><tr><th>Entidad</th><th style="text-align:right;">TEA</th></tr></thead>
       <tbody>
-        ${tasas.slice(0,15).map(t => `<tr><td class="entidad">${t.entidad}</td><td class="tasa">${fmt(t.tasa,2)}%</td></tr>`).join('')}
+        ${tasas.slice(0,15).map(t => `<tr><td class="entidad">${escapeHtml(t.entidad)}</td><td class="tasa">${fmt(t.tasa,2)}%</td></tr>`).join('')}
       </tbody>
     </table>`;
 }

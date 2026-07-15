@@ -299,6 +299,13 @@
 
 <script>
 const $ = id => document.getElementById(id);
+function escapeHtml(str){
+  if(str===null||str===undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 const fmt = (n,d=2) => (n===null||n===undefined||isNaN(n)) ? '—' : Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtDate = iso => new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'});
 
@@ -816,7 +823,7 @@ function renderInflacion(){
 function renderFeriados(){
   const data = STATE.feriados||[]; const today = new Date(); today.setHours(0,0,0,0);
   const upcoming = data.filter(f=> new Date(f.fecha+'T12:00:00') >= today).slice(0,5);
-  $('feriadosBox').innerHTML = upcoming.length ? upcoming.map(f=>`<div class="feriado-row"><span>${f.nombre}</span><span class="fdate">${fmtDate(f.fecha)}</span></div>`).join('') : `<div class="sub">No quedan feriados este año.</div>`;
+  $('feriadosBox').innerHTML = upcoming.length ? upcoming.map(f=>`<div class="feriado-row"><span>${escapeHtml(f.nombre)}</span><span class="fdate">${fmtDate(f.fecha)}</span></div>`).join('') : `<div class="sub">No quedan feriados este año.</div>`;
 }
 
 function renderNoticias(){
@@ -830,8 +837,8 @@ function renderNoticias(){
   $('noticiasSub').textContent = 'resumen automático, generado por IA';
   $('noticiasBox').innerHTML = lista.map(n => `
     <div style="padding:9px 2px; border-bottom:1px dashed var(--line);">
-      <div style="font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px;">${n.titulo}</div>
-      <div style="font-size:13px; color:var(--chalk); line-height:1.45;">${n.resumen}</div>
+      <div style="font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px;">${escapeHtml(n.titulo)}</div>
+      <div style="font-size:13px; color:var(--chalk); line-height:1.45;">${escapeHtml(n.resumen)}</div>
     </div>
   `).join('');
 }

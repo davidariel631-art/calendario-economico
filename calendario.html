@@ -66,6 +66,13 @@
 
 <script>
 const $ = id => document.getElementById(id);
+function escapeHtml(str){
+  if(str===null||str===undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
@@ -100,7 +107,7 @@ async function cargarFeriados(){
     }
     $('ferSub').textContent = data?.anio || '';
     $('ferBox').innerHTML = upcoming.map(f => `
-      <div class="cal-row"><span>${f.nombre}${f.tipo ? ` <span style="color:var(--dim); font-size:10.5px;">(${f.tipo})</span>` : ''}</span><span class="date-chip">${fmtDateCorta(f.fecha)}</span></div>
+      <div class="cal-row"><span>${escapeHtml(f.nombre)}${f.tipo ? ` <span style="color:var(--dim); font-size:10.5px;">(${escapeHtml(f.tipo)})</span>` : ''}</span><span class="date-chip">${fmtDateCorta(f.fecha)}</span></div>
     `).join('');
   }catch(e){
     console.error(e);
