@@ -50,6 +50,8 @@
   .kpi.st-green .v{color:var(--green);} .kpi.st-red .v{color:var(--red);} .kpi.st-amber .v{color:var(--amber);}
   .kpi .sub{font-size:9.5px; color:var(--dim); margin-top:2px;}
   .kpi .exp{font-size:10px; color:var(--chalk); margin-top:5px; padding-top:5px; border-top:1px dashed var(--line); line-height:1.35;}
+  body.compacta .kpi .exp, body.compacta .kpi .sub{display:none;}
+  body.compacta .kpi{padding:8px 10px;}
 
   .grid{display:grid; grid-template-columns:1.5fr 1fr; gap:12px;}
   @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
@@ -225,6 +227,7 @@
     <a href="finanzas.html">Finanzas</a>
     <a href="calendario.html">Calendario</a>
     <a href="glosario.html">Glosario</a>
+    <a href="faq.html">FAQ</a>
   </nav>
 
   <header>
@@ -237,12 +240,20 @@
       <span class="time mono" id="clock">--:--:--</span>
       <button class="refresh-btn" onclick="loadAll()">↻ Actualizar</button>
       <button class="refresh-btn" onclick="compartirWhatsApp()">Compartir</button>
+      <a class="refresh-btn" style="text-decoration:none; display:inline-block;" href="https://github.com/davidariel631-art/calendario-economico/issues/new?title=Reporte%20de%20error&body=Describ%C3%AD%20qu%C3%A9%20dato%20est%C3%A1%20mal%20o%20qu%C3%A9%20pas%C3%B3%3A" target="_blank" rel="noopener">Reportar error</a>
+      <button class="refresh-btn" id="btnCompacto" onclick="toggleVistaCompacta()">Vista compacta</button>
     </div>
   </header>
 
   <div class="panel" id="resumenPanel" style="display:none;">
     <h2>Resumen del día</h2>
     <div id="resumenBox" style="font-size:14px; line-height:1.5;"></div>
+  </div>
+
+  <div class="panel" style="padding:10px 14px;">
+    <input type="text" id="buscadorRapido" placeholder="Buscar un módulo o término (ej: nafta, alquiler, plazo fijo, dólar)..."
+      style="width:100%; background:var(--bg-2); border:1px solid var(--line); color:var(--chalk); padding:9px 12px; border-radius:7px; font-family:inherit; font-size:13px;"
+      onkeydown="if(event.key==='Enter') buscarRapido()">
   </div>
 
   <div class="kpi-grid" id="kpiGrid">
@@ -635,6 +646,7 @@ function renderKPIs(){
   if(byCasa.blue) tiles.push(dolarTile('Dólar blue','blue',byCasa.blue));
   if(byCasa.bolsa) tiles.push(dolarTile('Dólar MEP','bolsa',byCasa.bolsa));
   if(byCasa.contadoconliqui) tiles.push(dolarTile('Dólar CCL','contadoconliqui',byCasa.contadoconliqui));
+  if(byCasa.cripto) tiles.push(dolarTile('Dólar Cripto','cripto',byCasa.cripto));
   if(byCasa.oficial && byCasa.blue){
     const brecha = ((byCasa.blue.venta - byCasa.oficial.venta)/byCasa.oficial.venta)*100;
     const st = brecha>30?'st-red':brecha>10?'st-amber':'st-green';
@@ -667,7 +679,31 @@ function renderKPIs(){
   if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):''}); }
   if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'', exp:'Lo mínimo para no caer en indigencia (una persona).'}); }
   if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'', exp:'Lo mínimo para no caer en pobreza (una persona).'}); }
-  $('kpiGrid').innerHTML = tiles.map(t=>`<div class="kpi ${t.st||''}"><div class="k">${t.k} <a href="glosario.html?q=${encodeURIComponent(t.k)}" style="color:var(--dim); text-decoration:none;" title="Qué significa">ⓘ</a></div><div class="v-row"><span class="v mono">${t.v}</span></div><div class="sub">${t.sub||''}</div>${t.exp?`<div class="exp">${t.exp}</div>`:''}</div>`).join('');
+  // Favoritos: se guardan en localStorage del navegador (no en Firestore,
+  // es una preferencia personal de este dispositivo, no un dato compartido).
+  const favoritos = JSON.parse(localStorage.getItem('favoritos')||'[]');
+  tiles.sort((a,b) => (favoritos.includes(b.k)?1:0) - (favoritos.includes(a.k)?1:0));
+
+  $('kpiGrid').innerHTML = tiles.map(t=>{
+    const esFav = favoritos.includes(t.k);
+    return `<div class="kpi ${t.st||''}">
+      <div class="k">
+        <span onclick="toggleFavorito('${t.k.replace(/'/g,"\\'")}')" style="cursor:pointer; color:${esFav?'var(--amber)':'var(--dim)'};" title="Marcar como favorito">${esFav?'★':'☆'}</span>
+        ${t.k} <a href="glosario.html?q=${encodeURIComponent(t.k)}" style="color:var(--dim); text-decoration:none;" title="Qué significa">ⓘ</a>
+      </div>
+      <div class="v-row"><span class="v mono">${t.v}</span></div>
+      <div class="sub">${t.sub||''}</div>
+      ${t.exp?`<div class="exp">${t.exp}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function toggleFavorito(nombre){
+  let favoritos = JSON.parse(localStorage.getItem('favoritos')||'[]');
+  if(favoritos.includes(nombre)) favoritos = favoritos.filter(f=>f!==nombre);
+  else favoritos.push(nombre);
+  localStorage.setItem('favoritos', JSON.stringify(favoritos));
+  renderKPIs();
 }
 
 function renderResumen(){
@@ -1131,6 +1167,34 @@ function exportarCSV(tipo){
   a.href = url; a.download = nombreArchivo;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Buscador rápido: manda directo al módulo correspondiente, o al glosario
+// si no reconoce el término como un módulo.
+const MODULOS_BUSQUEDA = {
+  'nafta':'transporte.html', 'combustible':'transporte.html', 'gasoil':'transporte.html', 'transporte':'transporte.html',
+  'canasta':'consumo.html', 'consumo':'consumo.html', 'propina':'consumo.html',
+  'alquiler':'hogar.html', 'icl':'hogar.html', 'uva':'hogar.html', 'hogar':'hogar.html',
+  'plazo fijo':'finanzas.html', 'credito':'finanzas.html', 'crédito':'finanzas.html', 'finanzas':'finanzas.html', 'billetera':'finanzas.html',
+  'feriado':'calendario.html', 'monotributo':'calendario.html', 'anses':'calendario.html', 'calendario':'calendario.html',
+};
+function toggleVistaCompacta(){
+  document.body.classList.toggle('compacta');
+  const activa = document.body.classList.contains('compacta');
+  localStorage.setItem('vistaCompacta', activa ? '1' : '0');
+  $('btnCompacto').textContent = activa ? 'Vista completa' : 'Vista compacta';
+}
+if(localStorage.getItem('vistaCompacta')==='1'){
+  document.body.classList.add('compacta');
+  document.addEventListener('DOMContentLoaded', ()=>{ const b=$('btnCompacto'); if(b) b.textContent='Vista completa'; });
+}
+
+function buscarRapido(){
+  const q = document.getElementById('buscadorRapido').value.toLowerCase().trim();
+  if(!q) return;
+  const match = Object.keys(MODULOS_BUSQUEDA).find(k => q.includes(k));
+  if(match){ location.href = MODULOS_BUSQUEDA[match]; }
+  else { location.href = 'glosario.html?q=' + encodeURIComponent(q); }
 }
 
 function compartirWhatsApp(){

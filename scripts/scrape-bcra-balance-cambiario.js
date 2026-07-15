@@ -21,7 +21,7 @@ const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto'
 
 function urlDelMes(year, monthIndex0){
   const mes = MESES[monthIndex0];
-  return `https://www.bcra.gob.ar/publicaciones/informe-mercado-de-cambios-y-balance-cambiario-${mes}-de-${year}/`;
+  return `https://www.bcra.gob.ar/publicaciones/informe-de-evolucion-del-mercado-de-cambios-y-balance-cambiario-${mes}-de-${year}/`;
 }
 
 // El BCRA suele publicar el informe de un mes ~25-30 días después de

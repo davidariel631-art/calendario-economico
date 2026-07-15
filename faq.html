@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preguntas Frecuentes — Economía Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<style>
+  .faq-item{border-bottom:1px solid var(--line); padding:14px 2px;}
+  .faq-item:last-child{border-bottom:none;}
+  .faq-q{font-size:14px; font-weight:700; color:var(--chalk); cursor:pointer; display:flex; justify-content:space-between; align-items:center;}
+  .faq-q .arrow{color:var(--celeste); transition:transform .2s ease;}
+  .faq-item.open .faq-q .arrow{transform:rotate(180deg);}
+  .faq-a{max-height:0; overflow:hidden; transition:max-height .25s ease; font-size:13px; color:var(--dim); line-height:1.55;}
+  .faq-item.open .faq-a{max-height:300px; padding-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="topnav">
+    <a href="index.html">Dashboard</a>
+    <a href="transporte.html">Transporte</a>
+    <a href="consumo.html">Consumo</a>
+    <a href="hogar.html">Hogar</a>
+    <a href="finanzas.html">Finanzas</a>
+    <a href="calendario.html">Calendario</a>
+    <a href="glosario.html">Glosario</a>
+    <a href="faq.html" class="active">FAQ</a>
+  </nav>
+
+  <header>
+    <div class="brand">
+      <h1>PREGUNTAS FRECUENTES</h1>
+      <span class="eyebrow">cómo funciona esta aplicación</span>
+    </div>
+  </header>
+
+  <div class="panel">
+    <div id="faqList"></div>
+  </div>
+
+  <footer>
+    ¿Tenés una pregunta que no está acá? Usá el botón "Reportar error" del Dashboard para avisarnos.
+  </footer>
+
+</div>
+
+<script>
+const FAQS = [
+  {q:'¿Cada cuánto se actualizan los datos?', a:'La mayoría de los indicadores se actualiza una vez por día, automáticamente, sin que nadie tenga que tocar nada. El dólar se actualiza varias veces al día. Cada indicador tiene su propia frecuencia real, según cuándo lo publica el organismo oficial correspondiente (por ejemplo, el IPC es mensual porque INDEC lo publica una vez al mes).'},
+  {q:'¿De dónde salen los datos?', a:'De fuentes oficiales y públicas: Banco Central (BCRA), INDEC, y agregadores de datos abiertos del Estado. Cuando un dato no tiene una fuente pública automatizable de forma confiable, se lo marca claramente en vez de inventar un número.'},
+  {q:'¿Por qué a veces un dato dice "Pendiente" o "s/d"?', a:'"Pendiente" significa que el organismo todavía no publicó el dato de este período (por ejemplo, el IPC del mes en curso, que sale recién a mediados del mes siguiente). "s/d" (sin dato) significa que no tenemos ninguna fuente confiable para ese valor puntual. Preferimos mostrar eso antes que un número que podría estar mal.'},
+  {q:'¿Las calculadoras (plazo fijo, crédito UVA, alquiler) dan un resultado exacto?', a:'Son aproximaciones para entender el mecanismo, no asesoramiento financiero. Usan fórmulas simplificadas y datos reales del día, pero no reemplazan lo que te calcule tu banco o inmobiliaria con tu contrato específico.'},
+  {q:'¿Esta aplicación tiene alguna postura política?', a:'No. Los datos son los que publican los organismos oficiales, sin importar quién esté gobernando. Las explicaciones en criollo describen qué significa el número, no si algo "está bien o mal" en términos políticos.'},
+  {q:'¿Por qué algunos indicadores (como Recaudación o Resultado Fiscal) se cargan a mano?', a:'Porque, después de investigarlo en profundidad, esos organismos no publican los datos en un formato que se pueda leer de forma automática y confiable (cambian el nombre y hasta el formato del archivo cada mes). En vez de mantener un scraper que se rompe solo, se cargan manualmente una vez al mes.'},
+  {q:'¿Puedo usar estos datos en mi propio proyecto?', a:'Los datos que mostramos vienen de APIs públicas y gratuitas (BCRA, INDEC, ArgentinaDatos, Argly) — podés consultarlas vos mismo directamente. Esta aplicación no republica los datos como una API propia por ahora.'},
+  {q:'Encontré un dato que me parece mal, ¿qué hago?', a:'Usá el botón "Reportar error" en el Dashboard, que abre directo un reporte en el repositorio del proyecto. Cuantos más detalles des (qué tarjeta, qué valor esperabas), más rápido se puede revisar.'},
+];
+
+function render(){
+  document.getElementById('faqList').innerHTML = FAQS.map((f,i) => `
+    <div class="faq-item" id="faq-${i}">
+      <div class="faq-q" onclick="toggle(${i})"><span>${f.q}</span><span class="arrow">▾</span></div>
+      <div class="faq-a">${f.a}</div>
+    </div>
+  `).join('');
+}
+function toggle(i){
+  document.getElementById(`faq-${i}`).classList.toggle('open');
+}
+render();
+</script>
+</body>
+</html>

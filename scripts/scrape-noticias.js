@@ -70,7 +70,14 @@ async function main() {
   }
 
   console.log('Descargando RSS de Ámbito Economía...');
-  const res = await fetch(RSS_URL);
+  const res = await fetch(RSS_URL, {
+    headers: {
+      // Sin esto, Ámbito devuelve 403 — el user-agent por defecto de Node/GitHub
+      // Actions se identifica como bot y lo bloquean.
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+    },
+  });
   if (!res.ok) throw new Error(`RSS → HTTP ${res.status}`);
   const xml = await res.text();
   const items = extraerItems(xml);
