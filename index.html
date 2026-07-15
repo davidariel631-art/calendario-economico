@@ -297,6 +297,7 @@
       <div class="panel"><h2>Semáforo económico</h2><div id="semaforoBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
       <div class="panel"><h2>Riesgo país <small id="riesgoSub"></small></h2><div id="riesgoBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div><div style="display:flex; gap:6px; margin-top:8px;"><button class="refresh-btn" style="flex:1;" onclick="exportarCSV('riesgo')">⬇ CSV</button><button class="refresh-btn" style="flex:1;" onclick="exportarJSON('riesgo')">⬇ JSON</button></div></div>
       <div class="panel"><h2>Brecha cambiaria</h2><div id="brechaBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
+      <div class="panel"><h2>UVA — evolución <small id="uvaSub"></small></h2><div id="uvaChartBox"><div class="skeleton skeleton-line" style="width:70%"></div></div></div>
       <div class="panel"><h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2><div id="inflacionBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div><div style="display:flex; gap:6px; margin-top:8px;"><button class="refresh-btn" style="flex:1;" onclick="exportarCSV('inflacion')">⬇ CSV</button><button class="refresh-btn" style="flex:1;" onclick="exportarJSON('inflacion')">⬇ JSON</button></div></div>
       <div class="panel"><h2>Próximos feriados</h2><div id="feriadosBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
     </div>
@@ -587,6 +588,9 @@ async function loadUVA(){
   const doc = await leerIndicadorFS('uva');
   STATE.uva = doc?.ultimo ? [doc.ultimo] : [];
   STATE.errors.uva = doc ? null : 'Sin dato en Firestore (indicadores/uva).';
+  if(!STATE.uvaHist){
+    STATE.uvaHist = await leerHistoricoFS('uva');
+  }
   return STATE.uva;
 }
 
@@ -799,6 +803,32 @@ function renderRiesgo(){
     <div class="chart-card">${sparkline(values)}</div>
     <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>
     ${statsHtml}`;
+}
+
+function renderUvaChart(){
+  const histFull = STATE.uvaHist||[];
+  if(!histFull.length){
+    $('uvaChartBox').innerHTML = STATE.errors.uva
+      ? `<div class="loading" style="color:var(--red)">⚠️ Sin historial disponible.</div>`
+      : `<div class="loading">Sin datos todavía.</div>`;
+    return;
+  }
+  const hist = histFull.slice(-90); // últimos ~90 registros para que el gráfico no quede saturado
+  const values = hist.map(h=>h.valor);
+  const ultimo = histFull[histFull.length-1];
+  $('uvaSub').textContent = fmtDate(ultimo.fecha);
+
+  const vals = histFull.map(h=>h.valor);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const prom = vals.reduce((a,b)=>a+b,0)/vals.length;
+
+  $('uvaChartBox').innerHTML = `
+    <div class="v-row"><span class="v mono">$${fmt(ultimo.valor,2)}</span></div>
+    <div class="chart-card">${sparkline(values, 260, 46, 'var(--celeste)', 'var(--celeste)')}</div>
+    <div class="chart-caption"><span>${fmtDate(hist[0].fecha)}</span><span>hoy</span></div>
+    <div class="chart-caption" style="margin-top:8px; justify-content:space-between;">
+      <span>Mín: $${fmt(min,2)}</span><span>Prom: $${fmt(prom,2)}</span><span>Máx: $${fmt(max,2)}</span>
+    </div>`;
 }
 
 function renderBrecha(){
@@ -1315,7 +1345,7 @@ async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
   const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias(), cargarEncuesta()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
-  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
+  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderUvaChart(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
 }
 loadAll();
