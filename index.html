@@ -163,6 +163,10 @@
   .feriado-row .fdate{color:var(--celeste); font-weight:700;}
 
   .loading{color:var(--dim); font-size:11px; padding:14px 0; text-align:center;}
+  .skeleton{background:linear-gradient(90deg, var(--bg-2) 25%, var(--panel-2) 50%, var(--bg-2) 75%); background-size:200% 100%; animation:skeletonPulse 1.4s ease-in-out infinite; border-radius:6px;}
+  @keyframes skeletonPulse{ 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
+  .skeleton-line{height:14px; margin:6px 0;}
+  .skeleton-kpi{height:64px; border-radius:8px;}
   footer{margin-top:6px; padding-top:10px; border-top:1px solid var(--line); font-size:9.5px; color:var(--dim); line-height:1.6;}
   footer b{color:var(--chalk);}
 
@@ -260,7 +264,10 @@
   </div>
 
   <div class="kpi-grid" id="kpiGrid">
-    <div class="kpi"><div class="k">cargando</div><div class="v-row"><span class="v">…</span></div></div>
+    <div class="skeleton skeleton-kpi"></div>
+    <div class="skeleton skeleton-kpi"></div>
+    <div class="skeleton skeleton-kpi"></div>
+    <div class="skeleton skeleton-kpi"></div>
   </div>
 
   <div class="grid">
@@ -277,16 +284,21 @@
 
       <div class="panel">
         <h2>Noticias Inteligentes <small id="noticiasSub"></small></h2>
-        <div id="noticiasBox"><div class="loading">cargando…</div></div>
+        <div id="noticiasBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Encuesta del día</h2>
+        <div id="encuestaBox"><div class="skeleton skeleton-line" style="width:70%"></div></div>
       </div>
     </div>
 
     <div>
-      <div class="panel"><h2>Semáforo económico</h2><div id="semaforoBox"><div class="loading">cargando…</div></div></div>
-      <div class="panel"><h2>Riesgo país <small id="riesgoSub"></small></h2><div id="riesgoBox"><div class="loading">cargando…</div></div><button class="refresh-btn" style="margin-top:8px; width:100%;" onclick="exportarCSV('riesgo')">⬇ Exportar historial (CSV)</button></div>
-      <div class="panel"><h2>Brecha cambiaria</h2><div id="brechaBox"><div class="loading">cargando…</div></div></div>
-      <div class="panel"><h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2><div id="inflacionBox"><div class="loading">cargando…</div></div><button class="refresh-btn" style="margin-top:8px; width:100%;" onclick="exportarCSV('inflacion')">⬇ Exportar historial (CSV)</button></div>
-      <div class="panel"><h2>Próximos feriados</h2><div id="feriadosBox"><div class="loading">cargando…</div></div></div>
+      <div class="panel"><h2>Semáforo económico</h2><div id="semaforoBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
+      <div class="panel"><h2>Riesgo país <small id="riesgoSub"></small></h2><div id="riesgoBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div><div style="display:flex; gap:6px; margin-top:8px;"><button class="refresh-btn" style="flex:1;" onclick="exportarCSV('riesgo')">⬇ CSV</button><button class="refresh-btn" style="flex:1;" onclick="exportarJSON('riesgo')">⬇ JSON</button></div></div>
+      <div class="panel"><h2>Brecha cambiaria</h2><div id="brechaBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
+      <div class="panel"><h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2><div id="inflacionBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div><div style="display:flex; gap:6px; margin-top:8px;"><button class="refresh-btn" style="flex:1;" onclick="exportarCSV('inflacion')">⬇ CSV</button><button class="refresh-btn" style="flex:1;" onclick="exportarJSON('inflacion')">⬇ JSON</button></div></div>
+      <div class="panel"><h2>Próximos feriados</h2><div id="feriadosBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
     </div>
   </div>
 
@@ -826,6 +838,77 @@ function renderFeriados(){
   $('feriadosBox').innerHTML = upcoming.length ? upcoming.map(f=>`<div class="feriado-row"><span>${escapeHtml(f.nombre)}</span><span class="fdate">${fmtDate(f.fecha)}</span></div>`).join('') : `<div class="sub">No quedan feriados este año.</div>`;
 }
 
+// Encuesta diaria: pregunta simple, sin pretensión de ser una encuesta
+// científica — es para generar participación, no un dato estadístico serio.
+// El voto se guarda en Firestore (contador compartido) y se evita votar
+// dos veces marcando la fecha en localStorage del propio navegador (no es
+// una protección de seguridad real, solo evita el caso normal de "tocar
+// sin querer 2 veces").
+const OPCIONES_ENCUESTA = [
+  {key:'sube', label:'Va a subir'},
+  {key:'baja', label:'Va a bajar'},
+  {key:'igual', label:'Se va a mantener'},
+];
+
+async function cargarEncuesta(){
+  if(!fsDb) return;
+  const hoy = new Date().toISOString().slice(0,10);
+  try{
+    const ref = fsDb.collection('indicadores').doc('encuesta_diaria');
+    const snap = await ref.get();
+    let data = snap.exists ? snap.data() : null;
+    if(!data || data.fecha !== hoy){
+      data = { fecha: hoy, votos: {sube:0, baja:0, igual:0} };
+      await ref.set(data);
+    }
+    STATE.encuesta = data;
+    renderEncuesta();
+  }catch(e){ console.warn('Firestore: no se pudo leer la encuesta:', e.message); }
+}
+
+async function votarEncuesta(opcion){
+  const hoy = new Date().toISOString().slice(0,10);
+  if(localStorage.getItem('encuestaVotadaFecha') === hoy){
+    alert('Ya votaste en la encuesta de hoy — volvé mañana para una nueva.');
+    return;
+  }
+  try{
+    const ref = fsDb.collection('indicadores').doc('encuesta_diaria');
+    await ref.set({
+      votos: { [opcion]: firebase.firestore.FieldValue.increment(1) }
+    }, { merge: true });
+    localStorage.setItem('encuestaVotadaFecha', hoy);
+    const snap = await ref.get();
+    STATE.encuesta = snap.data();
+    renderEncuesta();
+  }catch(e){ console.warn('No se pudo registrar el voto:', e.message); }
+}
+
+function renderEncuesta(){
+  const data = STATE.encuesta;
+  if(!data){ $('encuestaBox').innerHTML = '<div class="loading">No se pudo cargar la encuesta.</div>'; return; }
+  const votos = data.votos || {sube:0,baja:0,igual:0};
+  const total = (votos.sube||0) + (votos.baja||0) + (votos.igual||0);
+  const hoy = new Date().toISOString().slice(0,10);
+  const yaVoto = localStorage.getItem('encuestaVotadaFecha') === hoy;
+
+  const pregunta = `<div style="font-size:13px; color:var(--chalk); margin-bottom:10px;">¿Cómo creés que va a estar el dólar blue el mes que viene?</div>`;
+
+  if(!yaVoto){
+    $('encuestaBox').innerHTML = pregunta + OPCIONES_ENCUESTA.map(o =>
+      `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" onclick="votarEncuesta('${o.key}')">${o.label}</button>`
+    ).join('');
+  } else {
+    $('encuestaBox').innerHTML = pregunta + OPCIONES_ENCUESTA.map(o => {
+      const pct = total ? Math.round((votos[o.key]||0)/total*100) : 0;
+      return `<div style="margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--dim); margin-bottom:3px;"><span>${o.label}</span><span>${pct}%</span></div>
+        <div style="background:var(--bg-2); border-radius:4px; height:8px; overflow:hidden;"><div style="width:${pct}%; height:100%; background:var(--celeste);"></div></div>
+      </div>`;
+    }).join('') + `<div style="font-size:10px; color:var(--dim); margin-top:6px;">${total} voto${total===1?'':'s'} hoy · ya votaste</div>`;
+  }
+}
+
 function renderNoticias(){
   const lista = STATE.noticias||[];
   if(!lista.length){
@@ -1159,24 +1242,28 @@ function renderDiagnostico(){
   }).join('');
 }
 
-function exportarCSV(tipo){
-  let filas, nombreArchivo;
-  if(tipo==='riesgo'){
-    filas = (STATE.riesgoHist||[]).map(h => `${h.fecha},${h.valor}`);
-    nombreArchivo = 'riesgo-pais-historico.csv';
-  } else {
-    filas = (STATE.inflMensual||[]).map(h => `${h.fecha},${h.valor}`);
-    nombreArchivo = 'ipc-mensual-historico.csv';
-  }
-  if(!filas.length){ alert('Todavía no hay historial cargado para exportar.'); return; }
-
-  const csv = 'fecha,valor\n' + filas.join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+function descargarArchivo(contenido, nombreArchivo, mime){
+  const blob = new Blob([contenido], {type:mime});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = nombreArchivo;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function exportarCSV(tipo){
+  const datos = tipo==='riesgo' ? (STATE.riesgoHist||[]) : (STATE.inflMensual||[]);
+  if(!datos.length){ alert('Todavía no hay historial cargado para exportar.'); return; }
+  const base = tipo==='riesgo' ? 'riesgo-pais-historico' : 'ipc-mensual-historico';
+  const filas = datos.map(h => `${h.fecha},${h.valor}`);
+  descargarArchivo('fecha,valor\n' + filas.join('\n'), base+'.csv', 'text/csv;charset=utf-8;');
+}
+
+function exportarJSON(tipo){
+  const datos = tipo==='riesgo' ? (STATE.riesgoHist||[]) : (STATE.inflMensual||[]);
+  if(!datos.length){ alert('Todavía no hay historial cargado para exportar.'); return; }
+  const base = tipo==='riesgo' ? 'riesgo-pais-historico' : 'ipc-mensual-historico';
+  descargarArchivo(JSON.stringify(datos, null, 2), base+'.json', 'application/json;charset=utf-8;');
 }
 
 // Buscador rápido: manda directo al módulo correspondiente, o al glosario
@@ -1226,7 +1313,7 @@ function compartirWhatsApp(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias(), cargarEncuesta()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});

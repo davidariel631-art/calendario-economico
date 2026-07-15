@@ -15,14 +15,30 @@ import { getDb } from './firebase-admin.js';
 const RSS_URL = 'https://www.ambito.com/rss/pages/economia.xml';
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'; // modelo económico, alcanza de sobra para resumir
 
+function limpiarHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/<[^>]+>/g, ' ')       // saca cualquier etiqueta HTML embebida (ej: <p id="...">)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extraerItems(xml) {
   const items = [];
   const bloques = xml.split('<item>').slice(1);
   for (const bloque of bloques) {
-    const titulo = /<title>([\s\S]*?)<\/title>/.exec(bloque)?.[1]?.trim();
-    const descripcion = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/.exec(bloque)?.[1]?.trim();
+    const tituloRaw = /<title>([\s\S]*?)<\/title>/.exec(bloque)?.[1]?.trim();
+    const descripcionRaw = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/.exec(bloque)?.[1]?.trim();
     const link = /<link>([\s\S]*?)<\/link>/.exec(bloque)?.[1]?.trim();
-    if (titulo) items.push({ titulo, descripcion: descripcion || '', link });
+    const titulo = limpiarHtml(tituloRaw);
+    const descripcion = limpiarHtml(descripcionRaw);
+    if (titulo) items.push({ titulo, descripcion, link });
   }
   return items.slice(0, 12); // los 12 más recientes alcanzan de sobra
 }
@@ -70,14 +86,21 @@ ${listado}`;
 // como el resumen de la IA, pero nunca deja el workflow en rojo por plata.
 const PALABRAS_CLAVE = /dólar|inflaci[oó]n|precio|salario|impuesto|tarifa|jubilaci[oó]n|monotributo|combustible|nafta|alquiler|canasta/i;
 
+function recortar(texto, maxLen=200){
+  if(!texto || texto.length<=maxLen) return texto;
+  const corte = texto.slice(0, maxLen);
+  const ultimoEspacio = corte.lastIndexOf(' ');
+  return corte.slice(0, ultimoEspacio>0?ultimoEspacio:maxLen) + '…';
+}
+
 function elegirSinIA(items) {
   const relevantes = items.filter(it => PALABRAS_CLAVE.test(it.titulo) || PALABRAS_CLAVE.test(it.descripcion));
   const elegidos = (relevantes.length ? relevantes : items).slice(0, 5);
   return elegidos.map(it => ({
     titulo: it.titulo,
-    // Sin IA no parafraseamos — mostramos la descripción original del RSS tal cual
-    // (o el título si no hay descripción), aclarando que es la fuente original.
-    resumen: it.descripcion || it.titulo,
+    // Sin IA no parafraseamos — mostramos la descripción original del RSS
+    // (recortada a un largo prolijo), aclarando que es la fuente original.
+    resumen: recortar(it.descripcion || it.titulo),
   }));
 }
 
