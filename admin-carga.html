@@ -40,6 +40,9 @@
   .hist-row b{color:var(--chalk);}
   #loginBox, #formBox{display:none;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10161a">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 </head>
 <body>
 <div class="card">
@@ -176,6 +179,13 @@ function renderHist(){
   $('histBox').innerHTML = sessionEntries.slice(0,6).map(e=>
     `<div class="hist-row"><span>${e.key} · ${e.periodo}</span><b>${e.valor} ${e.unidad}</b></div>`
   ).join('');
+}
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no se pudo registrar:', e));
+  });
 }
 </script>
 </body>

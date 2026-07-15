@@ -19,6 +19,9 @@
   td.tasa{font-variant-numeric:tabular-nums; font-weight:800; color:var(--green); text-align:right;}
   .note-box{background:var(--celeste-bg); border:1px solid var(--celeste); border-radius:8px; padding:14px 16px; font-size:12px; color:var(--chalk); line-height:1.55; margin-top:12px;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10161a">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 </head>
 <body>
 <div class="wrap">
@@ -244,6 +247,13 @@ function calcularUVA(){
 }
 
 init();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no se pudo registrar:', e));
+  });
+}
 </script>
 </body>
 </html>

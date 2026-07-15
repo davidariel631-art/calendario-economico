@@ -28,6 +28,9 @@
   }
   #noResults{display:none;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10161a">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 </head>
 <body>
 <div class="wrap">
@@ -146,6 +149,13 @@ const qUrl = paramsUrl.get('q');
 if(qUrl){
   document.getElementById('buscador').value = qUrl;
   filtrar();
+}
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no se pudo registrar:', e));
+  });
 }
 </script>
 </body>

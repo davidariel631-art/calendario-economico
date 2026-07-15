@@ -16,6 +16,9 @@
   .faq-a{max-height:0; overflow:hidden; transition:max-height .25s ease; font-size:13px; color:var(--dim); line-height:1.55;}
   .faq-item.open .faq-a{max-height:300px; padding-top:10px;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10161a">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 </head>
 <body>
 <div class="wrap">
@@ -72,6 +75,13 @@ function toggle(i){
   document.getElementById(`faq-${i}`).classList.toggle('open');
 }
 render();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no se pudo registrar:', e));
+  });
+}
 </script>
 </body>
 </html>

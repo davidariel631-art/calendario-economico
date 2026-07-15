@@ -14,6 +14,9 @@
   .cal-row:last-child{border-bottom:none;}
   .cal-row .date-chip{font-size:10px; color:var(--celeste); background:var(--celeste-bg); border:1px solid var(--celeste); border-radius:4px; padding:2px 7px; font-weight:700; white-space:nowrap; margin-left:10px;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10161a">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 </head>
 <body>
 <div class="wrap">
@@ -124,6 +127,13 @@ function renderVencimientos(){
 
 cargarFeriados();
 renderVencimientos();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no se pudo registrar:', e));
+  });
+}
 </script>
 </body>
 </html>

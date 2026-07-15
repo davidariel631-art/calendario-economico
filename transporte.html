@@ -18,6 +18,9 @@
   .fuel-card .price{font-size:24px; font-weight:800; margin-top:6px; font-variant-numeric:tabular-nums;}
   .fuel-card .note{font-size:9.5px; color:var(--dim); margin-top:4px;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10161a">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 </head>
 <body>
 <div class="wrap">
@@ -165,6 +168,13 @@ function calcularTanque(){
 }
 
 init();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no se pudo registrar:', e));
+  });
+}
 </script>
 </body>
 </html>
