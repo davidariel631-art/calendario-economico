@@ -219,6 +219,8 @@
     .impacto-box .criollo{font-size:12px;}
   }
 </style>
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#10161a">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -1279,6 +1281,21 @@ function descargarArchivo(contenido, nombreArchivo, mime){
   a.href = url; a.download = nombreArchivo;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  mostrarToast(`Descargado: ${nombreArchivo}`);
+}
+
+function mostrarToast(mensaje){
+  let toast = document.getElementById('toastAviso');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'toastAviso';
+    toast.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--celeste); color:#0e1a20; padding:10px 18px; border-radius:8px; font-size:12.5px; font-weight:700; z-index:9999; box-shadow:0 8px 24px rgba(0,0,0,.4); transition:opacity .3s ease; opacity:0;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = mensaje;
+  toast.style.opacity = '1';
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(()=>{ toast.style.opacity = '0'; }, 2500);
 }
 
 function exportarCSV(tipo){

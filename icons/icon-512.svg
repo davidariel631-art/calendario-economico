@@ -1,6 +1,21 @@
 <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="96" fill="#10161a"/>
-  <rect x="16" y="16" width="480" height="480" rx="84" fill="none" stroke="#2a373b" stroke-width="4"/>
-  <text x="256" y="300" font-family="Arial, sans-serif" font-size="220" font-weight="800" fill="#39d98a" text-anchor="middle">$</text>
-  <path d="M 90 380 L 170 320 L 240 350 L 330 260 L 420 200" fill="none" stroke="#7cc0ea" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#151d21"/>
+      <stop offset="100%" stop-color="#10161a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <rect x="14" y="14" width="484" height="484" rx="88" fill="none" stroke="#2a373b" stroke-width="5"/>
+
+  <!-- Barras tipo gráfico económico, con la última en celeste (dato de hoy) -->
+  <rect x="110" y="290" width="46" height="130" rx="6" fill="#39d98a" opacity="0.55"/>
+  <rect x="176" y="240" width="46" height="180" rx="6" fill="#39d98a" opacity="0.7"/>
+  <rect x="242" y="200" width="46" height="220" rx="6" fill="#ffb238" opacity="0.85"/>
+  <rect x="308" y="150" width="46" height="270" rx="6" fill="#7cc0ea"/>
+
+  <!-- Línea de tendencia por encima de las barras -->
+  <path d="M 90 300 L 155 250 L 220 260 L 285 180 L 375 120"
+        fill="none" stroke="#eef0ee" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="375" cy="120" r="14" fill="#eef0ee"/>
 </svg>
