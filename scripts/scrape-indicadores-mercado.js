@@ -19,13 +19,48 @@ async function getJson(url) {
   return res.json();
 }
 
+// ------------------------------------------------------------------
+// CONTROL DE CALIDAD: rangos razonables por indicador. Si una fuente
+// devuelve un número fuera de estos límites (por un cambio de formato,
+// un error de la API, un campo mal interpretado, etc.), NO lo guardamos
+// — mejor mantener el dato anterior (que sabemos válido) que pisarlo con
+// basura en silencio. Los límites son generosos a propósito: no buscan
+// validar que el número sea "razonable hoy", sino filtrar errores
+// groseros (un campo en 0, un string mal parseado, un cero de más o de
+// menos).
+// ------------------------------------------------------------------
+const RANGOS = {
+  riesgo_pais: [0, 20000],        // puntos básicos
+  ipc_mensual: [-5, 40],          // % mensual
+  ipc_interanual: [0, 500],       // % interanual
+  uva: [1, 100000],
+  icl: [1, 10000],
+  smvm: [10000, 10000000],        // pesos
+  canasta_cba: [1000, 10000000],
+  canasta_cbt: [1000, 10000000],
+};
+
+function esValorRazonable(clave, valor) {
+  if (typeof valor !== 'number' || !isFinite(valor)) return false;
+  const rango = RANGOS[clave];
+  if (!rango) return true; // sin rango definido -> no filtramos de más
+  return valor >= rango[0] && valor <= rango[1];
+}
+
 function fechaISO(str) {
   if (!str) return null;
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : str;
 }
 
-async function guardar(db, key, registro) {
+async function guardar(db, key, registro, claveRango=key) {
+  if ('valor' in registro && !esValorRazonable(claveRango, registro.valor)) {
+    throw new Error(
+      `Control de calidad: el valor de "${key}" (${registro.valor}) está fuera del rango razonable ` +
+      `[${RANGOS[claveRango]?.join(' a ')}] — no se guarda, para no pisar el último dato válido con basura. ` +
+      `Revisar si la fuente cambió de formato.`
+    );
+  }
   await db.collection('indicadores').doc(key).set({ ultimo: registro }, { merge: true });
   await db.collection('indicadores').doc(key).collection('historico').doc(registro.fecha).set(registro, { merge: true });
   console.log(`✅ ${key}:`, registro);
@@ -93,13 +128,20 @@ async function scrapeSMVM(db) {
 async function scrapeCanasta(db) {
   const { data } = await getJson('https://api.argly.com.ar/v1/canasta');
   const fecha = data.periodo || data.fecha_publicacion;
+  const cba = data.cba?.adulto_equivalente ?? null;
+  const cbt = data.cbt?.adulto_equivalente ?? null;
+
+  if (!esValorRazonable('canasta_cba', cba)) throw new Error(`Control de calidad: CBA (${cba}) fuera de rango razonable — no se guarda.`);
+  if (!esValorRazonable('canasta_cbt', cbt)) throw new Error(`Control de calidad: CBT (${cbt}) fuera de rango razonable — no se guarda.`);
+  if (cbt !== null && cba !== null && cbt < cba) throw new Error(`Control de calidad: CBT (${cbt}) no puede ser menor que CBA (${cba}) — algo está mal en la fuente, no se guarda.`);
+
   await guardar(db, 'canasta', {
-    cbaAdultoEquivalente: data.cba?.adulto_equivalente ?? null,
-    cbtAdultoEquivalente: data.cbt?.adulto_equivalente ?? null,
+    cbaAdultoEquivalente: cba,
+    cbtAdultoEquivalente: cbt,
     fecha,
     fuente: 'Argly (api.argly.com.ar)',
     scrapedAt: new Date().toISOString(),
-  });
+  }, null); // null = sin chequeo genérico de "valor" (ya lo hicimos arriba a mano)
 }
 
 async function scrapeFeriados(db) {

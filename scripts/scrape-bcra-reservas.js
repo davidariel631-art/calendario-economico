@@ -71,6 +71,14 @@ export async function scrapeReservas() {
     scrapedAt: new Date().toISOString(),
   };
 
+  // Control de calidad: las reservas de Argentina nunca estuvieron ni van
+  // a estar en un valor absurdo como 0 o negativo, ni por encima de los
+  // ~200.000M (seria un cambio de escala insólito). Si viniera así, es
+  // casi seguro un error de la fuente, no un dato real.
+  if (typeof registro.valorMillonesUSD !== 'number' || registro.valorMillonesUSD <= 0 || registro.valorMillonesUSD > 200000) {
+    throw new Error(`Control de calidad: reservas (${registro.valorMillonesUSD} M USD) fuera de rango razonable — no se guarda.`);
+  }
+
   console.log('✅ Reservas BCRA:', registro);
 
   const db = getDb();

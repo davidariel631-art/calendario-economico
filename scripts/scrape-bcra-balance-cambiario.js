@@ -75,6 +75,14 @@ export async function scrapeBalanceCambiario(){
     scrapedAt: new Date().toISOString(),
   };
 
+  // Control de calidad: un mes de balance cambiario no debería superar
+  // unos pocos miles de millones de USD en ningún sentido — si el regex
+  // agarró mal el número (por un cambio de redacción del informe), un
+  // valor absurdo lo delata.
+  if (typeof registro.valor !== 'number' || Math.abs(registro.valor) > 20000) {
+    throw new Error(`Control de calidad: balance cambiario (${registro.valor} M USD) fuera de rango razonable — no se guarda. Revisar si el regex sigue matcheando bien la redacción del informe.`);
+  }
+
   console.log('✅ Balance cambiario:', registro);
 
   const db = getDb();

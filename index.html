@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
 <style>
   :root{
     --bg:#10161a; --bg-2:#151d21; --panel:#1a2327; --panel-2:#1e292d; --line:#2a373b;
@@ -777,6 +779,62 @@ function renderSemaforo(){
   $('semaforoBox').innerHTML = `<div class="semaforo"><div class="ring" style="background:${color}22; border:3px solid ${color}; color:${color};">${fmt(v,0)}<br>pb</div><div class="txt"><b style="color:${color}">${label}</b><span>${desc}</span></div></div>`;
 }
 
+// ---------- Gráficos interactivos (Chart.js) ----------
+// Reemplaza los sparklines simples (SVG estático) por gráficos de verdad:
+// tooltip al pasar el mouse mostrando fecha+valor exacto, y zoom con la
+// rueda del mouse / pellizco en celular (chartjs-plugin-zoom).
+const chartInstances = {};
+function crearOActualizarGrafico(canvasId, labels, data, color){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas || typeof Chart === 'undefined') return; // si el CDN no cargó, no rompemos nada
+
+  if(chartInstances[canvasId]){
+    chartInstances[canvasId].destroy();
+  }
+
+  chartInstances[canvasId] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: color,
+        backgroundColor: color+'22',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: true,
+        tension: 0.25,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#151d21',
+          borderColor: '#2a373b',
+          borderWidth: 1,
+          titleColor: '#8fa19f',
+          bodyColor: '#eef0ee',
+          padding: 8,
+        },
+        zoom: {
+          zoom: { wheel: {enabled:true}, pinch: {enabled:true}, mode: 'x' },
+          pan: { enabled: true, mode: 'x' },
+          limits: { x: {minRange: 5} },
+        }
+      },
+      scales: {
+        x: { ticks: { color:'#8fa19f', maxTicksLimit:6, font:{size:9} }, grid: { color:'#1e292d' } },
+        y: { ticks: { color:'#8fa19f', font:{size:9} }, grid: { color:'#1e292d' } },
+      }
+    }
+  });
+}
+
 function renderRiesgo(){
   if(!STATE.riesgo){
     if(STATE.errors.riesgo){
@@ -802,9 +860,11 @@ function renderRiesgo(){
   }
 
   $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v mono">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta mono">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
-    <div class="chart-card">${sparkline(values)}</div>
+    <div class="chart-card" style="height:120px;"><canvas id="riesgoChartCanvas"></canvas></div>
     <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>
+    <div style="font-size:9px; color:var(--dim); text-align:right; margin-top:2px;">🔍 rueda del mouse: zoom · arrastrar: mover · <span style="color:var(--celeste); cursor:pointer;" onclick="chartInstances['riesgoChartCanvas']?.resetZoom()">reset</span></div>
     ${statsHtml}`;
+  crearOActualizarGrafico('riesgoChartCanvas', hist.map(h=>fmtDate(h.fecha)), values, '#7cc0ea');
 }
 
 function renderUvaChart(){
@@ -826,11 +886,13 @@ function renderUvaChart(){
 
   $('uvaChartBox').innerHTML = `
     <div class="v-row"><span class="v mono">$${fmt(ultimo.valor,2)}</span></div>
-    <div class="chart-card">${sparkline(values, 260, 46, 'var(--celeste)', 'var(--celeste)')}</div>
+    <div class="chart-card" style="height:120px;"><canvas id="uvaChartCanvas"></canvas></div>
     <div class="chart-caption"><span>${fmtDate(hist[0].fecha)}</span><span>hoy</span></div>
+    <div style="font-size:9px; color:var(--dim); text-align:right; margin-top:2px;">🔍 rueda del mouse: zoom · arrastrar: mover · <span style="color:var(--celeste); cursor:pointer;" onclick="chartInstances['uvaChartCanvas']?.resetZoom()">reset</span></div>
     <div class="chart-caption" style="margin-top:8px; justify-content:space-between;">
       <span>Mín: $${fmt(min,2)}</span><span>Prom: $${fmt(prom,2)}</span><span>Máx: $${fmt(max,2)}</span>
     </div>`;
+  crearOActualizarGrafico('uvaChartCanvas', hist.map(h=>fmtDate(h.fecha)), values, '#39d98a');
 }
 
 function renderBrecha(){
