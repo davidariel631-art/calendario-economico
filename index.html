@@ -9,8 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
 <style>
   :root{
     --bg:#10161a; --bg-2:#151d21; --panel:#1a2327; --panel-2:#1e292d; --line:#2a373b;
@@ -253,6 +253,7 @@
       <button class="refresh-btn" onclick="compartirWhatsApp()">Compartir</button>
       <a class="refresh-btn" style="text-decoration:none; display:inline-block;" href="https://github.com/davidariel631-art/calendario-economico/issues/new?title=Reporte%20de%20error&body=Describ%C3%AD%20qu%C3%A9%20dato%20est%C3%A1%20mal%20o%20qu%C3%A9%20pas%C3%B3%3A" target="_blank" rel="noopener">Reportar error</a>
       <button class="refresh-btn" id="btnCompacto" onclick="toggleVistaCompacta()">Vista compacta</button>
+      <button class="refresh-btn" id="btnNotif" onclick="activarNotificaciones()">🔔 Activar notificaciones</button>
     </div>
   </header>
 
@@ -302,6 +303,7 @@
       <div class="panel"><h2>Riesgo país <small id="riesgoSub"></small></h2><div id="riesgoBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div><div style="display:flex; gap:6px; margin-top:8px;"><button class="refresh-btn" style="flex:1;" onclick="exportarCSV('riesgo')">⬇ CSV</button><button class="refresh-btn" style="flex:1;" onclick="exportarJSON('riesgo')">⬇ JSON</button></div></div>
       <div class="panel"><h2>Brecha cambiaria</h2><div id="brechaBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
       <div class="panel"><h2>UVA — evolución <small id="uvaSub"></small></h2><div id="uvaChartBox"><div class="skeleton skeleton-line" style="width:70%"></div></div></div>
+      <div class="panel"><h2>Dólar — evolución <small id="dolarChartSub"></small></h2><div id="dolarChartBox"><div class="skeleton skeleton-line" style="width:70%"></div></div></div>
       <div class="panel"><h2>Inflación mensual (INDEC) <small id="inflSub"></small></h2><div id="inflacionBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div><div style="display:flex; gap:6px; margin-top:8px;"><button class="refresh-btn" style="flex:1;" onclick="exportarCSV('inflacion')">⬇ CSV</button><button class="refresh-btn" style="flex:1;" onclick="exportarJSON('inflacion')">⬇ JSON</button></div></div>
       <div class="panel"><h2>Próximos feriados</h2><div id="feriadosBox"><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:45%"></div></div></div>
     </div>
@@ -821,11 +823,6 @@ function crearOActualizarGrafico(canvasId, labels, data, color){
           bodyColor: '#eef0ee',
           padding: 8,
         },
-        zoom: {
-          zoom: { wheel: {enabled:true}, pinch: {enabled:true}, mode: 'x' },
-          pan: { enabled: true, mode: 'x' },
-          limits: { x: {minRange: 5} },
-        }
       },
       scales: {
         x: { ticks: { color:'#8fa19f', maxTicksLimit:6, font:{size:9} }, grid: { color:'#1e292d' } },
@@ -833,6 +830,58 @@ function crearOActualizarGrafico(canvasId, labels, data, color){
       }
     }
   });
+}
+
+function crearOActualizarGraficoMulti(canvasId, labels, series){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas || typeof Chart === 'undefined') return;
+  if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+  chartInstances[canvasId] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: series.map(s => ({
+        label: s.label, data: s.data, borderColor: s.color, backgroundColor: s.color+'15',
+        borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: false, tension: 0.25,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color:'#8fa19f', font:{size:10}, boxWidth:10 } },
+        tooltip: { backgroundColor:'#151d21', borderColor:'#2a373b', borderWidth:1, titleColor:'#8fa19f', bodyColor:'#eef0ee', padding:8 },
+      },
+      scales: {
+        x: { ticks: { color:'#8fa19f', maxTicksLimit:6, font:{size:9} }, grid: { color:'#1e292d' } },
+        y: { ticks: { color:'#8fa19f', font:{size:9} }, grid: { color:'#1e292d' } },
+      }
+    }
+  });
+}
+
+async function loadDolarHist(){
+  const [oficial, blue] = await Promise.all([leerHistoricoFS('dolar_oficial'), leerHistoricoFS('dolar_blue')]);
+  STATE.dolarOficialHist = oficial; STATE.dolarBlueHist = blue;
+}
+
+function renderDolarChart(){
+  const oficial = STATE.dolarOficialHist||[], blue = STATE.dolarBlueHist||[];
+  if(!oficial.length && !blue.length){
+    $('dolarChartBox').innerHTML = '<div class="loading">Sin historial todavía — se va acumulando un día a la vez.</div>';
+    return;
+  }
+  const fechas = [...new Set([...oficial.map(h=>h.fecha), ...blue.map(h=>h.fecha)])].sort();
+  const mapaOficial = Object.fromEntries(oficial.map(h=>[h.fecha,h.valor]));
+  const mapaBlue = Object.fromEntries(blue.map(h=>[h.fecha,h.valor]));
+
+  $('dolarChartSub').textContent = fechas.length ? fmtDate(fechas[fechas.length-1]) : '';
+  $('dolarChartBox').innerHTML = `<div class="chart-card" style="height:140px;"><canvas id="dolarChartCanvas"></canvas></div>`;
+  crearOActualizarGraficoMulti('dolarChartCanvas', fechas.map(f=>fmtDate(f)), [
+    {label:'Oficial', data: fechas.map(f=>mapaOficial[f]??null), color:'#ffb238'},
+    {label:'Blue', data: fechas.map(f=>mapaBlue[f]??null), color:'#7cc0ea'},
+  ]);
 }
 
 function renderRiesgo(){
@@ -862,8 +911,7 @@ function renderRiesgo(){
   $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v mono">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta mono">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
     <div class="chart-card" style="height:120px;"><canvas id="riesgoChartCanvas"></canvas></div>
     <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>
-    <div style="font-size:9px; color:var(--dim); text-align:right; margin-top:2px;">🔍 rueda del mouse: zoom · arrastrar: mover · <span style="color:var(--celeste); cursor:pointer;" onclick="chartInstances['riesgoChartCanvas']?.resetZoom()">reset</span></div>
-    ${statsHtml}`;
+        ${statsHtml}`;
   crearOActualizarGrafico('riesgoChartCanvas', hist.map(h=>fmtDate(h.fecha)), values, '#7cc0ea');
 }
 
@@ -888,7 +936,7 @@ function renderUvaChart(){
     <div class="v-row"><span class="v mono">$${fmt(ultimo.valor,2)}</span></div>
     <div class="chart-card" style="height:120px;"><canvas id="uvaChartCanvas"></canvas></div>
     <div class="chart-caption"><span>${fmtDate(hist[0].fecha)}</span><span>hoy</span></div>
-    <div style="font-size:9px; color:var(--dim); text-align:right; margin-top:2px;">🔍 rueda del mouse: zoom · arrastrar: mover · <span style="color:var(--celeste); cursor:pointer;" onclick="chartInstances['uvaChartCanvas']?.resetZoom()">reset</span></div>
+    <div style="font-size:9px; color:var(--dim); text-align:right; margin-top:2px;">Pasá el mouse por el gráfico para ver el valor exacto de cada fecha</div>
     <div class="chart-caption" style="margin-top:8px; justify-content:space-between;">
       <span>Mín: $${fmt(min,2)}</span><span>Prom: $${fmt(prom,2)}</span><span>Máx: $${fmt(max,2)}</span>
     </div>`;
@@ -1403,6 +1451,49 @@ function buscarRapido(){
   else { location.href = 'glosario.html?q=' + encodeURIComponent(q); }
 }
 
+// ---------- Notificaciones push ----------
+// IMPORTANTE: esto necesita una VAPID key propia de tu proyecto de Firebase.
+// Se genera en: Firebase Console → ⚙️ Configuración del proyecto →
+// Cloud Messaging → pestaña "Web Push certificates" → "Generar par de claves".
+// Pegá esa key acá abajo — sin esto, el botón de notificaciones no va a
+// funcionar (va a tirar un error claro en la consola, no falla en silencio).
+const VAPID_KEY = 'PEGÁ_ACÁ_TU_VAPID_KEY_DE_FIREBASE';
+
+async function activarNotificaciones(){
+  if(VAPID_KEY.startsWith('PEGÁ')){
+    alert('Falta configurar la VAPID key de Firebase Cloud Messaging. Mirá el comentario en el código (buscá "VAPID_KEY") para los pasos.');
+    return;
+  }
+  if(!('Notification' in window) || !('serviceWorker' in navigator)){
+    alert('Tu navegador no soporta notificaciones push.');
+    return;
+  }
+  try{
+    const permiso = await Notification.requestPermission();
+    if(permiso !== 'granted'){ mostrarToast('No se activaron — no diste permiso.'); return; }
+
+    const registration = await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+
+    if(token && fsDb){
+      await fsDb.collection('push_subscribers').doc(token).set({
+        token, creadoEn: new Date().toISOString(), userAgent: navigator.userAgent,
+      });
+      localStorage.setItem('notifActivadas', '1');
+      $('btnNotif').textContent = '🔔 Notificaciones activas';
+      mostrarToast('¡Notificaciones activadas!');
+    }
+  }catch(e){
+    console.error('Error activando notificaciones:', e);
+    mostrarToast('No se pudieron activar las notificaciones (ver consola).');
+  }
+}
+
+if(localStorage.getItem('notifActivadas')==='1'){
+  document.addEventListener('DOMContentLoaded', ()=>{ const b=$('btnNotif'); if(b) b.textContent='🔔 Notificaciones activas'; });
+}
+
 function compartirWhatsApp(){
   const dol = STATE.dolares||[]; const byCasa={}; dol.forEach(d=>byCasa[d.casa]=d);
   const partes = ['📊 Economía Argentina — resumen de hoy'];
@@ -1422,9 +1513,9 @@ function compartirWhatsApp(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias(), cargarEncuesta()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias(), cargarEncuesta(), loadDolarHist()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
-  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderUvaChart(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
+  renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderUvaChart(); renderDolarChart(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
 }
 loadAll();

@@ -2,6 +2,36 @@
 // para que abra rápido y no quede en blanco sin internet. Los datos en
 // vivo (Firestore) siguen necesitando conexión — esto solo evita que la
 // app en sí no cargue.
+//
+// También maneja notificaciones push en segundo plano (app cerrada) vía
+// Firebase Cloud Messaging.
+importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyAt_aHKSiMSZKQUkWDwVRuGG1LsyPKiejE",
+  authDomain: "economia-8333c.firebaseapp.com",
+  projectId: "economia-8333c",
+  storageBucket: "economia-8333c.firebasestorage.app",
+  messagingSenderId: "592136842311",
+  appId: "1:592136842311:web:f9314e5106c21e09e75562",
+});
+
+try{
+  const messaging = firebase.messaging();
+  messaging.onBackgroundMessage((payload) => {
+    const titulo = payload.notification?.title || 'Economía Argentina';
+    const opciones = {
+      body: payload.notification?.body || '',
+      icon: 'assets/icons/icon-192.png',
+      badge: 'assets/icons/icon-192.png',
+    };
+    self.registration.showNotification(titulo, opciones);
+  });
+}catch(e){
+  console.warn('Firebase Messaging no se pudo inicializar en el Service Worker:', e);
+}
+
 const CACHE_NAME = 'economia-arg-v1';
 const ARCHIVOS_SHELL = [
   './',

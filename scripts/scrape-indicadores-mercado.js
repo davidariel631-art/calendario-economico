@@ -115,6 +115,30 @@ async function scrapeUVA(db) {
   });
 }
 
+// Dólar histórico: DolarAPI (que usa el panel) da el valor de HOY, pero no
+// tiene endpoint de histórico. Guardamos nosotros un registro por día acá
+// para poder graficar la evolución con el tiempo (esto sí lo podíamos
+// pedir directo desde el navegador porque DolarAPI no bloquea CORS, pero
+// conviene una sola fuente de historial consistente en vez de mezclar).
+async function scrapeDolares(db) {
+  const data = await getJson('https://dolarapi.com/v1/dolares');
+  const hoy = new Date().toISOString().slice(0, 10);
+  const porCasa = { oficial: 'dolar_oficial', blue: 'dolar_blue', cripto: 'dolar_cripto', bolsa: 'dolar_mep' };
+
+  for (const [casa, key] of Object.entries(porCasa)) {
+    const item = data.find(d => d.casa === casa);
+    if (!item || typeof item.venta !== 'number') continue;
+    const registro = { valor: item.venta, valorCompra: item.compra, fecha: hoy, fuente: 'DolarAPI', scrapedAt: new Date().toISOString() };
+    // Rango de sanidad amplio a propósito — solo para filtrar un 0 o un
+    // error de parseo grosero, no para "opinar" sobre si el valor es alto.
+    if (registro.valor <= 0 || registro.valor > 100000000) {
+      console.warn(`⚠️  ${key} (${registro.valor}) fuera de rango razonable — no se guarda.`);
+      continue;
+    }
+    await guardar(db, key, registro);
+  }
+}
+
 async function scrapeSMVM(db) {
   const { data } = await getJson('https://api.argly.com.ar/v1/smvm');
   await guardar(db, 'smvm', {
@@ -228,6 +252,7 @@ async function main() {
     ['inflación (IPC)', scrapeInflacion],
     ['inflación interanual', scrapeInflacionInteranual],
     ['UVA', scrapeUVA],
+    ['dólares (histórico)', scrapeDolares],
     ['ICL', scrapeICL],
     ['SMVM', scrapeSMVM],
     ['canasta básica', scrapeCanasta],
