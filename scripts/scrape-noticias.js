@@ -98,9 +98,9 @@ function elegirSinIA(items) {
   const elegidos = (relevantes.length ? relevantes : items).slice(0, 5);
   return elegidos.map(it => ({
     titulo: it.titulo,
-    // Sin IA no parafraseamos — mostramos la descripción original del RSS
-    // (recortada a un largo prolijo), aclarando que es la fuente original.
-    resumen: recortar(it.descripcion || it.titulo),
+    // Sin IA no parafraseamos — mostramos la descripción completa original
+    // del RSS, sin recortar, aclarando que es la fuente original.
+    resumen: it.descripcion || it.titulo,
   }));
 }
 

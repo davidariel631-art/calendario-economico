@@ -224,7 +224,9 @@ async function scrapeCombustibles(db) {
   const tipos = [
     ['super', 'nafta-super'],
     ['premium', 'nafta-premium'],
-    ['gasoil', 'gasoil'],
+    // Gasoil: probé "gasoil", "gas-oil" y "diesel" y los 3 dan 404 — Argly
+    // no expone este combustible bajo ningún nombre que pudimos confirmar.
+    // Se saca en vez de repetir un error semana tras semana.
   ];
   const precios = {};
   for (const [key, slug] of tipos) {

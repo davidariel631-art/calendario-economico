@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#000000; --bg-2:#0a0a0a; --panel:#0d0d0f; --panel-2:#111114; --line:#1f1f23;
@@ -617,6 +617,7 @@ async function loadSMVM(){
 async function loadNoticias(){
   const doc = await leerIndicadorFS('noticias');
   STATE.noticias = doc?.lista || [];
+  STATE.noticiasMetodo = doc?.metodo || null;
   STATE.errors.noticias = doc ? null : 'Sin dato en Firestore (indicadores/noticias) — corré "npm run noticias" al menos una vez.';
   return STATE.noticias;
 }
@@ -1066,7 +1067,7 @@ function renderNoticias(){
       : `<div class="loading">Sin noticias por ahora.</div>`;
     return;
   }
-  $('noticiasSub').textContent = 'resumen automático, generado por IA';
+  $('noticiasSub').textContent = STATE.noticiasMetodo === 'ia' ? 'resumen generado por IA' : 'titulares originales (modo gratis)';
   $('noticiasBox').innerHTML = lista.map(n => `
     <div style="padding:9px 2px; border-bottom:1px dashed var(--line);">
       <div style="font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px;">${escapeHtml(n.titulo)}</div>
@@ -1462,9 +1463,12 @@ function buscarRapido(){
 // IMPORTANTE: esto necesita una VAPID key propia de tu proyecto de Firebase.
 // Se genera en: Firebase Console → ⚙️ Configuración del proyecto →
 // Cloud Messaging → pestaña "Web Push certificates" → "Generar par de claves".
-// Pegá esa key acá abajo — sin esto, el botón de notificaciones no va a
-// funcionar (va a tirar un error claro en la consola, no falla en silencio).
-const VAPID_KEY = 'PEGÁ_ACÁ_TU_VAPID_KEY_DE_FIREBASE';
+//
+// La clave larga que te muestra la tabla ahí (columna "Par de claves") ES
+// la clave pública — esa es la que va acá abajo. Firebase nunca te muestra
+// la privada por separado: la maneja internamente y no hace falta pegarla
+// en ningún lado. Si ya generaste el par, copiá esa cadena larga tal cual.
+const VAPID_KEY = 'BAEWJXgK2s9Vbw_7oiKiEklbvyYZkBf8TJUZbCGlO6Uid8A1wKF_HzlSA2OOJ3mhGJUd9xQKZhgAx8TVSjpptQ4';
 
 async function activarNotificaciones(){
   if(VAPID_KEY.startsWith('PEGÁ')){
