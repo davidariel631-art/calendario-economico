@@ -2,9 +2,9 @@
    base.css — tokens y componentes compartidos por todos los módulos
    ============================================================ */
 :root{
-  --bg:#10161a; --bg-2:#151d21; --panel:#1a2327; --panel-2:#1e292d; --line:#2a373b;
+  --bg:#000000; --bg-2:#0a0a0a; --panel:#0d0d0f; --panel-2:#111114; --line:#1f1f23;
   --chalk:#eef0ee; --dim:#8fa19f; --amber:#ffb238; --green:#39d98a; --green-bg:#123326;
-  --red:#ff6161; --red-bg:#3a1a1a; --celeste:#7cc0ea; --celeste-bg:#122a35;
+  --red:#ff6161; --red-bg:#3a1a1a; --celeste:#00D2FF; --celeste-bg:#001a24;
   --ease:cubic-bezier(.22,.9,.32,1);
 }
 *{box-sizing:border-box;}

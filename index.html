@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Economía Argentina — Panel en vivo</title>
+<title>AXON</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,9 +13,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#10161a; --bg-2:#151d21; --panel:#1a2327; --panel-2:#1e292d; --line:#2a373b;
+    --bg:#000000; --bg-2:#0a0a0a; --panel:#0d0d0f; --panel-2:#111114; --line:#1f1f23;
     --chalk:#eef0ee; --dim:#8fa19f; --amber:#ffb238; --green:#39d98a; --green-bg:#123326;
-    --red:#ff6161; --red-bg:#3a1a1a; --amber-bg:#3a2a10; --celeste:#7cc0ea; --celeste-bg:#122a35;
+    --red:#ff6161; --red-bg:#3a1a1a; --amber-bg:#3a2a10; --celeste:#00D2FF; --celeste-bg:#001a24;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -221,8 +221,7 @@
     .impacto-box .criollo{font-size:12px;}
   }
 </style>
-<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAAB30lEQVRYhc2XP2/TUBTFf3afY6SYsDgSikSUjCB1qJSlEhn5ApSNKuIjsCBLdMgnYHAGUIZs2aJmjlSFkQU2QOwdIpBM/0CyBS5DSBu1Tmr72UmPdCRbfvee8+5971kPrmMb8IEvwBgQTZ4Bn4ADoBiidwEbeAv8SUF0GU+A/WXi7zMUXuRfwLtq4N2axBdNPJ2Lb2dc9mX8DtzdAl4Du2F9yRgO8BPgawS3kWjbdtyYDyZQTmM6pVKJWq0WN+whMR2H0nEc6ff7opSKHWsmm+8lTNOk2+0yHA6ZTqeJcmjNvtVqSRAEks/nk+bQMyAi0mw2dXLoGZhMJuK6buJ47TXQ6XQIgkArh1YFqtWqVrzx/2FjSNYCKwf3H1y8VioVfN9nPB4jIrTbbZRSkdPFK5t9R3jxSjCMa99c1xXP82Q0GslgMJBCoZDyLrBywv5Lwbm3cpxt29JoNKTX60m5XE7JgJUTnjwTlBXZsFJK6vX6TT+piOI7j0PLngJvGGBuCcVSFsICUbahYYCsHqKDW3EOnG9Q/5cJfNuggWMTONyggSOAAvCDjFb5Ck6BR3Mne8wuC+s04F8th7dGE0eAFdaT58wuC1mW3V8mPkeR2W3pI3Caguhv4DPwhoWez/EPMcalA4GWnS0AAAAASUVORK5CYII=">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#10161a">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -231,6 +230,14 @@
 <div class="wrap">
 
   <nav class="topnav">
+    <a href="index.html" style="display:flex; align-items:center;" title="AXON"><span id="axon-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
+  <rect width="512" height="512" rx="128" fill="#000000"/>
+  <g transform="translate(256, 256)">
+    <path d="M 0 -20 L 60 -150 L 0 -80 Z" fill="#FFFFFF"/>
+    <path d="M 20 0 L 150 60 L 80 0 Z" fill="#FFFFFF"/>
+    <path d="M -20 0 L -120 100 L -40 30 Z" fill="#00D2FF"/>
+  </g>
+</svg></span>AXON</a>
     <a href="index.html" class="active">Dashboard</a>
     <a href="transporte.html">Transporte</a>
     <a href="consumo.html">Consumo</a>
@@ -243,8 +250,8 @@
 
   <header>
     <div class="brand">
-      <h1>ECONOMÍA<span>·ARG</span></h1>
-      <span class="eyebrow">panel en vivo · Buenos Aires</span>
+      <h1>AXON</h1>
+      <span class="eyebrow">panel económico · Argentina</span>
     </div>
     <div class="clockbox">
       <span><span class="dot-live"></span><span id="lastUpdate">conectando…</span></span>
@@ -877,7 +884,7 @@ function renderDolarChart(){
   const mapaBlue = Object.fromEntries(blue.map(h=>[h.fecha,h.valor]));
 
   $('dolarChartSub').textContent = fechas.length ? fmtDate(fechas[fechas.length-1]) : '';
-  $('dolarChartBox').innerHTML = `<div class="chart-card" style="height:140px;"><canvas id="dolarChartCanvas"></canvas></div>`;
+  $('dolarChartBox').innerHTML = `<div class="chart-card" style="height:140px; position:relative;"><canvas id="dolarChartCanvas" height="140"></canvas></div>`;
   crearOActualizarGraficoMulti('dolarChartCanvas', fechas.map(f=>fmtDate(f)), [
     {label:'Oficial', data: fechas.map(f=>mapaOficial[f]??null), color:'#ffb238'},
     {label:'Blue', data: fechas.map(f=>mapaBlue[f]??null), color:'#7cc0ea'},
@@ -909,7 +916,7 @@ function renderRiesgo(){
   }
 
   $('riesgoBox').innerHTML = `<div class="kpi ${st}" style="border-left-width:4px;"><div class="v-row"><span class="v mono">${fmt(STATE.riesgo.valor,0)} pb</span><span class="delta mono">${delta!==null?arrow(delta)+' '+fmt(Math.abs(delta),0):''}</span></div></div>
-    <div class="chart-card" style="height:120px;"><canvas id="riesgoChartCanvas"></canvas></div>
+    <div class="chart-card" style="height:120px; position:relative;"><canvas id="riesgoChartCanvas" height="120"></canvas></div>
     <div class="chart-caption"><span>${hist.length?fmtDate(hist[0].fecha):''}</span><span>hoy</span></div>
         ${statsHtml}`;
   crearOActualizarGrafico('riesgoChartCanvas', hist.map(h=>fmtDate(h.fecha)), values, '#7cc0ea');
@@ -934,7 +941,7 @@ function renderUvaChart(){
 
   $('uvaChartBox').innerHTML = `
     <div class="v-row"><span class="v mono">$${fmt(ultimo.valor,2)}</span></div>
-    <div class="chart-card" style="height:120px;"><canvas id="uvaChartCanvas"></canvas></div>
+    <div class="chart-card" style="height:120px; position:relative;"><canvas id="uvaChartCanvas" height="120"></canvas></div>
     <div class="chart-caption"><span>${fmtDate(hist[0].fecha)}</span><span>hoy</span></div>
     <div style="font-size:9px; color:var(--dim); text-align:right; margin-top:2px;">Pasá el mouse por el gráfico para ver el valor exacto de cada fecha</div>
     <div class="chart-caption" style="margin-top:8px; justify-content:space-between;">
@@ -1457,7 +1464,7 @@ function buscarRapido(){
 // Cloud Messaging → pestaña "Web Push certificates" → "Generar par de claves".
 // Pegá esa key acá abajo — sin esto, el botón de notificaciones no va a
 // funcionar (va a tirar un error claro en la consola, no falla en silencio).
-const VAPID_KEY = 'BAEWJXgK2s9Vbw_7oiKiEklbvyYZkBf8TJUZbCGlO6Uid8A1wKF_HzlSA2OOJ3mhGJUd9xQKZhgAx8TVSjpptQ4';
+const VAPID_KEY = 'PEGÁ_ACÁ_TU_VAPID_KEY_DE_FIREBASE';
 
 async function activarNotificaciones(){
   if(VAPID_KEY.startsWith('PEGÁ')){
