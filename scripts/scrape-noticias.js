@@ -46,12 +46,15 @@ function extraerItems(xml) {
 async function pedirResumenIA(items) {
   const listado = items.map((it, i) => `${i + 1}. ${it.titulo}${it.descripcion ? ' — ' + it.descripcion : ''}`).join('\n');
 
-  const prompt = `Sos un asistente que le explica economía argentina a alguien sin conocimientos financieros. Te paso una lista de titulares de noticias económicas de hoy. Tu tarea:
+  const prompt = `Sos un asistente que le explica economía argentina a alguien sin conocimientos financieros. Te paso una lista numerada de noticias económicas de hoy. Tu tarea:
 
-1. Elegí solo los 3 a 5 más relevantes para el bolsillo de una persona común (dólar, inflación, precios, salarios, impuestos, tarifas). Ignorá noticias de política pura, deportes, o análisis muy técnicos de mercado financiero que no afectan a la gente de a pie.
-2. Para cada uno, escribí un resumen de UNA sola oración, en tus propias palabras (no copies el titular ni la descripción tal cual), en lenguaje simple, sin jerga económica, sin opinión política.
-3. Devolvé SOLO un JSON válido, sin texto extra, con este formato exacto:
-[{"titulo": "...", "resumen": "..."}]
+1. Elegí las 5 a 8 más relevantes para el bolsillo de una persona común (dólar, inflación, precios, salarios, impuestos, tarifas, trabajo). Ignorá noticias de política pura, deportes, o análisis muy técnicos de mercado financiero que no afectan a la gente de a pie.
+2. Para cada una, escribí un resumen de 2 oraciones, en tus propias palabras (no copies el titular ni la descripción tal cual), en lenguaje simple, sin jerga económica, sin opinión política:
+   - Primera oración: qué pasó, con el contexto necesario para entenderlo sin haber leído la noticia completa.
+   - Segunda oración: cómo le puede llegar a afectar el bolsillo a una persona común (si no es evidente, explicá igual la relación aunque sea indirecta).
+3. Para cada noticia elegida, indicá el número de la lista original al que corresponde (campo "item"), así el sistema sabe a qué nota enlazar — NO inventes ni escribas ninguna URL vos.
+4. Devolvé SOLO un JSON válido, sin texto extra, con este formato exacto:
+[{"item": 3, "titulo": "...", "resumen": "..."}]
 
 Noticias de hoy:
 ${listado}`;
@@ -65,7 +68,7 @@ ${listado}`;
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1000,
+      max_tokens: 1800,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -77,7 +80,18 @@ ${listado}`;
   // Por si el modelo agrega texto antes/después del JSON a pesar de la instrucción.
   const match = texto.match(/\[[\s\S]*\]/);
   if (!match) throw new Error('La IA no devolvió un JSON reconocible: ' + texto.slice(0, 200));
-  return JSON.parse(match[0]);
+  const resultado = JSON.parse(match[0]);
+
+  // Adjuntamos el link real usando el número de item que devolvió la IA —
+  // el link nunca lo escribe la IA, así evitamos que invente una URL.
+  return resultado.map(r => {
+    const original = (typeof r.item === 'number') ? items[r.item - 1] : null;
+    return {
+      titulo: r.titulo || original?.titulo || '(sin título)',
+      resumen: r.resumen || '',
+      link: original?.link || null,
+    };
+  });
 }
 
 // Modo gratis (sin IA): si no hay ANTHROPIC_API_KEY, o si Anthropic falla
@@ -95,12 +109,13 @@ function recortar(texto, maxLen=200){
 
 function elegirSinIA(items) {
   const relevantes = items.filter(it => PALABRAS_CLAVE.test(it.titulo) || PALABRAS_CLAVE.test(it.descripcion));
-  const elegidos = (relevantes.length ? relevantes : items).slice(0, 5);
+  const elegidos = (relevantes.length ? relevantes : items).slice(0, 8);
   return elegidos.map(it => ({
     titulo: it.titulo,
     // Sin IA no parafraseamos — mostramos la descripción completa original
     // del RSS, sin recortar, aclarando que es la fuente original.
     resumen: it.descripcion || it.titulo,
+    link: it.link || null,
   }));
 }
 

@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AXON</title>
+<title>KRAX</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -230,14 +231,14 @@
 <div class="wrap">
 
   <nav class="topnav">
-    <a href="index.html" style="display:flex; align-items:center;" title="AXON"><span id="axon-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
+    <a href="index.html" style="display:flex; align-items:center;" title="KRAX"><span id="krax-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
   <rect width="512" height="512" rx="128" fill="#000000"/>
   <g transform="translate(256, 256)">
     <path d="M 0 -20 L 60 -150 L 0 -80 Z" fill="#FFFFFF"/>
     <path d="M 20 0 L 150 60 L 80 0 Z" fill="#FFFFFF"/>
     <path d="M -20 0 L -120 100 L -40 30 Z" fill="#00D2FF"/>
   </g>
-</svg></span>AXON</a>
+</svg></span>KRAX</a>
     <a href="index.html" class="active">Dashboard</a>
     <a href="transporte.html">Transporte</a>
     <a href="consumo.html">Consumo</a>
@@ -250,7 +251,7 @@
 
   <header>
     <div class="brand">
-      <h1>AXON</h1>
+      <h1>KRAX</h1>
       <span class="eyebrow">panel económico · Argentina</span>
     </div>
     <div class="clockbox">
@@ -385,6 +386,20 @@ let fsDb = null;
 if(typeof firebase !== 'undefined'){
   try{
     firebase.initializeApp(firebaseConfig);
+
+// Firebase App Check: verifica que los pedidos a Firestore vengan de
+// verdad desde esta página (no de un bot o un script externo copiando
+// la config). Corre en modo "monitoreo" hasta que actives "Enforce" en
+// la consola de Firebase — así podés confirmar que todo sigue andando
+// antes de que empiece a bloquear pedidos de verdad.
+// Necesita: Firebase Console → App Check → Registrar app → reCAPTCHA v3
+// → pegar el "site key" de reCAPTCHA acá abajo.
+const APP_CHECK_SITE_KEY = 'PEGÁ_ACÁ_TU_SITE_KEY_DE_RECAPTCHA_V3';
+if(typeof firebase !== 'undefined' && firebase.appCheck && !APP_CHECK_SITE_KEY.startsWith('PEGÁ')){
+  try{
+    firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
+  }catch(e){ console.warn('App Check no se pudo activar:', e); }
+}
     fsDb = firebase.firestore();
   }catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
 } else {
@@ -1068,12 +1083,17 @@ function renderNoticias(){
     return;
   }
   $('noticiasSub').textContent = STATE.noticiasMetodo === 'ia' ? 'resumen generado por IA' : 'titulares originales (modo gratis)';
-  $('noticiasBox').innerHTML = lista.map(n => `
-    <div style="padding:9px 2px; border-bottom:1px dashed var(--line);">
+  $('noticiasBox').innerHTML = lista.map(n => {
+    const contenido = `
       <div style="font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px;">${escapeHtml(n.titulo)}</div>
       <div style="font-size:13px; color:var(--chalk); line-height:1.45;">${escapeHtml(n.resumen)}</div>
-    </div>
-  `).join('');
+      ${n.link ? `<div style="font-size:10px; color:var(--celeste); margin-top:4px;">Ver nota completa →</div>` : ''}
+    `;
+    const estilo = 'padding:9px 2px; border-bottom:1px dashed var(--line);' + (n.link ? ' cursor:pointer;' : '');
+    return n.link
+      ? `<a href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="display:block; text-decoration:none; ${estilo}">${contenido}</a>`
+      : `<div style="${estilo}">${contenido}</div>`;
+  }).join('');
 }
 
 /* ---------------- CALENDARIO: TARJETAS ---------------- */

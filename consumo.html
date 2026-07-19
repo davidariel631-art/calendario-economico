@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Consumo — AXON</title>
+<title>Consumo — KRAX</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/base.css">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAAB30lEQVRYhc2XP2/TUBTFf3afY6SYsDgSikSUjCB1qJSlEhn5ApSNKuIjsCBLdMgnYHAGUIZs2aJmjlSFkQU2QOwdIpBM/0CyBS5DSBu1Tmr72UmPdCRbfvee8+5971kPrmMb8IEvwBgQTZ4Bn4ADoBiidwEbeAv8SUF0GU+A/WXi7zMUXuRfwLtq4N2axBdNPJ2Lb2dc9mX8DtzdAl4Du2F9yRgO8BPgawS3kWjbdtyYDyZQTmM6pVKJWq0WN+whMR2H0nEc6ff7opSKHWsmm+8lTNOk2+0yHA6ZTqeJcmjNvtVqSRAEks/nk+bQMyAi0mw2dXLoGZhMJuK6buJ47TXQ6XQIgkArh1YFqtWqVrzx/2FjSNYCKwf3H1y8VioVfN9nPB4jIrTbbZRSkdPFK5t9R3jxSjCMa99c1xXP82Q0GslgMJBCoZDyLrBywv5Lwbm3cpxt29JoNKTX60m5XE7JgJUTnjwTlBXZsFJK6vX6TT+piOI7j0PLngJvGGBuCcVSFsICUbahYYCsHqKDW3EOnG9Q/5cJfNuggWMTONyggSOAAvCDjFb5Ck6BR3Mne8wuC+s04F8th7dGE0eAFdaT58wuC1mW3V8mPkeR2W3pI3Caguhv4DPwhoWez/EPMcalA4GWnS0AAAAASUVORK5CYII=">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#10161a">
@@ -18,14 +19,14 @@
 <div class="wrap">
 
   <nav class="topnav">
-    <a href="index.html" style="display:flex; align-items:center;" title="AXON"><span id="axon-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
+    <a href="index.html" style="display:flex; align-items:center;" title="KRAX"><span id="krax-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
   <rect width="512" height="512" rx="128" fill="#000000"/>
   <g transform="translate(256, 256)">
     <path d="M 0 -20 L 60 -150 L 0 -80 Z" fill="#FFFFFF"/>
     <path d="M 20 0 L 150 60 L 80 0 Z" fill="#FFFFFF"/>
     <path d="M -20 0 L -120 100 L -40 30 Z" fill="#00D2FF"/>
   </g>
-</svg></span>AXON</a>
+</svg></span>KRAX</a>
     <a href="index.html">Dashboard</a>
     <a href="transporte.html">Transporte</a>
     <a href="consumo.html" class="active">Consumo</a>
@@ -133,6 +134,21 @@ if(typeof firebase !== 'undefined'){
   try{ firebase.initializeApp(firebaseConfig); fsDb = firebase.firestore(); }
   catch(e){ console.warn('Firebase no se pudo inicializar:', e); }
 }
+
+// Firebase App Check: verifica que los pedidos a Firestore vengan de
+// verdad desde esta página (no de un bot o un script externo copiando
+// la config). Corre en modo "monitoreo" hasta que actives "Enforce" en
+// la consola de Firebase — así podés confirmar que todo sigue andando
+// antes de que empiece a bloquear pedidos de verdad.
+// Necesita: Firebase Console → App Check → Registrar app → reCAPTCHA v3
+// → pegar el "site key" de reCAPTCHA acá abajo.
+const APP_CHECK_SITE_KEY = 'PEGÁ_ACÁ_TU_SITE_KEY_DE_RECAPTCHA_V3';
+if(typeof firebase !== 'undefined' && firebase.appCheck && !APP_CHECK_SITE_KEY.startsWith('PEGÁ')){
+  try{
+    firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
+  }catch(e){ console.warn('App Check no se pudo activar:', e); }
+}
+
 
 function calcularPropina(){
   const monto = parseFloat($('propMonto').value);

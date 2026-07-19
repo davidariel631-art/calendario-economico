@@ -1,6 +1,6 @@
 {
-  "name": "AXON",
-  "short_name": "AXON",
+  "name": "KRAX",
+  "short_name": "KRAX",
   "description": "Dólar, riesgo país, inflación, canasta básica y más — actualizado automáticamente.",
   "start_url": "./index.html",
   "scope": "./",

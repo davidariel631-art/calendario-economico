@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Preguntas Frecuentes — AXON</title>
+<title>Preguntas Frecuentes — KRAX</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/base.css">
@@ -25,14 +25,14 @@
 <div class="wrap">
 
   <nav class="topnav">
-    <a href="index.html" style="display:flex; align-items:center;" title="AXON"><span id="axon-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
+    <a href="index.html" style="display:flex; align-items:center;" title="KRAX"><span id="krax-nav-logo"><svg viewBox="0 0 512 512" width="20" height="20" style="display:inline-block; vertical-align:middle; margin-right:6px; border-radius:4px;">
   <rect width="512" height="512" rx="128" fill="#000000"/>
   <g transform="translate(256, 256)">
     <path d="M 0 -20 L 60 -150 L 0 -80 Z" fill="#FFFFFF"/>
     <path d="M 20 0 L 150 60 L 80 0 Z" fill="#FFFFFF"/>
     <path d="M -20 0 L -120 100 L -40 30 Z" fill="#00D2FF"/>
   </g>
-</svg></span>AXON</a>
+</svg></span>KRAX</a>
     <a href="index.html">Dashboard</a>
     <a href="transporte.html">Transporte</a>
     <a href="consumo.html">Consumo</a>
@@ -62,6 +62,7 @@
 
 <script>
 const FAQS = [
+  {q:'¿Por qué existe KRAX?', a:'Todo empezó con una pregunta simple durante una charla: ¿por qué no existe acá una referencia clara, un estándar de transparencia como la Fed en Estados Unidos? El mercado estaba ahí, los datos también, pero estaban fragmentados, ocultos tras interfaces obsoletas y ruido visual. KRAX nació para llenar ese vacío. Diseñamos este sistema para que la información financiera sea visible, directa y sin intermediarios. No buscamos el consenso, buscamos la claridad absoluta.'},
   {q:'¿Cada cuánto se actualizan los datos?', a:'La mayoría de los indicadores se actualiza una vez por día, automáticamente, sin que nadie tenga que tocar nada. El dólar se actualiza varias veces al día. Cada indicador tiene su propia frecuencia real, según cuándo lo publica el organismo oficial correspondiente (por ejemplo, el IPC es mensual porque INDEC lo publica una vez al mes).'},
   {q:'¿De dónde salen los datos?', a:'De fuentes oficiales y públicas: Banco Central (BCRA), INDEC, y agregadores de datos abiertos del Estado. Cuando un dato no tiene una fuente pública automatizable de forma confiable, se lo marca claramente en vez de inventar un número.'},
   {q:'¿Por qué a veces un dato dice "Pendiente" o "s/d"?', a:'"Pendiente" significa que el organismo todavía no publicó el dato de este período (por ejemplo, el IPC del mes en curso, que sale recién a mediados del mes siguiente). "s/d" (sin dato) significa que no tenemos ninguna fuente confiable para ese valor puntual. Preferimos mostrar eso antes que un número que podría estar mal.'},
