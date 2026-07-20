@@ -54,6 +54,8 @@
     </div>
   </header>
 
+  <div class="kpi-grid" id="badlarBox"><div class="skeleton skeleton-kpi"></div></div>
+
   <div class="panel">
     <h2>Tasas de plazo fijo por banco <small id="pfSub"></small></h2>
     <div id="pfBox"><div class="loading">Cargando tasas…</div></div>
@@ -202,6 +204,27 @@ async function init(){
 
   await cargarPlazosFijos();
   await cargarUVA();
+  await cargarBadlar();
+}
+
+async function cargarBadlar(){
+  try{
+    const snap = await fsDb.collection('indicadores').doc('badlar').get();
+    const u = snap.exists ? snap.data().ultimo : null;
+    if(!u){
+      document.getElementById('badlarBox').innerHTML = '<div class="loading">Sin dato de BADLAR todavía.</div>';
+      return;
+    }
+    document.getElementById('badlarBox').innerHTML = `
+      <div class="kpi">
+        <div class="k">BADLAR ⓘ</div>
+        <div class="v-row"><span class="v mono">${fmt(u.valor,2)}%</span></div>
+        <div class="sub">${u.fecha}</div>
+        <div class="exp">Tasa de referencia entre bancos por depósitos grandes ($1M+) — termómetro de las tasas del sistema, distinto al plazo fijo minorista de abajo.</div>
+      </div>`;
+  }catch(e){
+    console.warn('Firestore: no se pudo leer badlar:', e.message);
+  }
 }
 
 async function cargarPlazosFijos(){

@@ -192,6 +192,31 @@ async function scrapeICL(db) {
   });
 }
 
+// BADLAR: confirmado contra la API oficial del BCRA (misma que usamos para
+// Reservas) — idVariable 7. Es la tasa de referencia que pagan los bancos
+// por depósitos grandes ($1M+) a plazo fijo, y sirve como termómetro de
+// las tasas del sistema en general (a diferencia del plazo fijo minorista
+// que ya mostramos en Finanzas).
+async function scrapeBadlar(db) {
+  const json = await getJson('https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/7');
+  const detalle = json?.results?.[0]?.detalle || [];
+  if (!detalle.length) throw new Error('BADLAR: la API no devolvió detalle.');
+  const ordenado = [...detalle].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const ultimo = ordenado[0];
+
+  if (typeof ultimo.valor !== 'number' || ultimo.valor <= 0 || ultimo.valor > 500) {
+    throw new Error(`Control de calidad: BADLAR (${ultimo.valor}%) fuera de rango razonable — no se guarda.`);
+  }
+
+  await guardar(db, 'badlar', {
+    valor: ultimo.valor,
+    unidad: '%',
+    fecha: ultimo.fecha,
+    fuente: 'api.bcra.gob.ar (API oficial, idVariable 7)',
+    scrapedAt: new Date().toISOString(),
+  }, null);
+}
+
 // Plazos fijos: confirmado en el manual oficial del desarrollador del BCRA
 // — el endpoint es "PlazosFijos" (plural), y los campos son
 // descripcionEntidad / tasaEfectivaAnualMinima / montoMinimoInvertir.
@@ -260,6 +285,7 @@ async function main() {
     ['canasta básica', scrapeCanasta],
     ['feriados', scrapeFeriados],
     ['plazos fijos', scrapePlazosFijos],
+    ['BADLAR', scrapeBadlar],
     ['combustibles', scrapeCombustibles],
   ];
 
