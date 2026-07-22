@@ -192,17 +192,54 @@ async function scrapeICL(db) {
   });
 }
 
+// Busca una variable del BCRA por texto en su descripción, en vez de
+// hardcodear un idVariable a ciegas (ya nos pasó de poner un número mal).
+// Trae la lista COMPLETA de variables una sola vez y busca por texto.
+let _cacheVariablesBCRA = null;
+async function buscarVariableBCRA(textoBuscado) {
+  if (!_cacheVariablesBCRA) {
+    const json = await getJson('https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias');
+    _cacheVariablesBCRA = json.results || [];
+  }
+  return _cacheVariablesBCRA.find(v => v.descripcion?.toLowerCase().includes(textoBuscado.toLowerCase()));
+}
+
+async function scrapeBaseMonetaria(db) {
+  const variable = await buscarVariableBCRA('base monetaria');
+  if (!variable) throw new Error('No se encontró "Base Monetaria" en el listado de variables del BCRA — puede que hayan cambiado el nombre exacto.');
+
+  const json = await getJson(`https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/${variable.idVariable}`);
+  const detalle = json?.results?.[0]?.detalle || [];
+  if (!detalle.length) throw new Error('Base Monetaria: sin detalle en la respuesta.');
+  const ultimo = [...detalle].sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+
+  if (typeof ultimo.valor !== 'number' || ultimo.valor <= 0) {
+    throw new Error(`Control de calidad: Base Monetaria (${ultimo.valor}) fuera de rango razonable.`);
+  }
+
+  await guardar(db, 'base_monetaria', {
+    valor: ultimo.valor,
+    unidad: variable.unidadExpresion || 'Millones de $',
+    fecha: ultimo.fecha,
+    descripcionOficial: variable.descripcion,
+    fuente: `api.bcra.gob.ar (idVariable ${variable.idVariable}, encontrado por nombre)`,
+    scrapedAt: new Date().toISOString(),
+  }, null);
+}
+
 // BADLAR: confirmado contra la API oficial del BCRA (misma que usamos para
 // Reservas) — idVariable 7. Es la tasa de referencia que pagan los bancos
 // por depósitos grandes ($1M+) a plazo fijo, y sirve como termómetro de
 // las tasas del sistema en general (a diferencia del plazo fijo minorista
 // que ya mostramos en Finanzas).
 async function scrapeBadlar(db) {
-  const json = await getJson('https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/7');
+  const variable = await buscarVariableBCRA('badlar');
+  if (!variable) throw new Error('No se encontró "BADLAR" en el listado de variables del BCRA.');
+
+  const json = await getJson(`https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/${variable.idVariable}`);
   const detalle = json?.results?.[0]?.detalle || [];
   if (!detalle.length) throw new Error('BADLAR: la API no devolvió detalle.');
-  const ordenado = [...detalle].sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const ultimo = ordenado[0];
+  const ultimo = [...detalle].sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
 
   if (typeof ultimo.valor !== 'number' || ultimo.valor <= 0 || ultimo.valor > 500) {
     throw new Error(`Control de calidad: BADLAR (${ultimo.valor}%) fuera de rango razonable — no se guarda.`);
@@ -212,7 +249,8 @@ async function scrapeBadlar(db) {
     valor: ultimo.valor,
     unidad: '%',
     fecha: ultimo.fecha,
-    fuente: 'api.bcra.gob.ar (API oficial, idVariable 7)',
+    descripcionOficial: variable.descripcion,
+    fuente: `api.bcra.gob.ar (idVariable ${variable.idVariable}, encontrado por nombre)`,
     scrapedAt: new Date().toISOString(),
   }, null);
 }
@@ -286,6 +324,7 @@ async function main() {
     ['feriados', scrapeFeriados],
     ['plazos fijos', scrapePlazosFijos],
     ['BADLAR', scrapeBadlar],
+    ['Base Monetaria', scrapeBaseMonetaria],
     ['combustibles', scrapeCombustibles],
   ];
 

@@ -637,6 +637,13 @@ async function loadNoticias(){
   return STATE.noticias;
 }
 
+async function loadBaseMonetaria(){
+  const doc = await leerIndicadorFS('base_monetaria');
+  STATE.baseMonetaria = doc?.ultimo || null;
+  STATE.errors.baseMonetaria = doc ? null : 'Sin dato en Firestore (indicadores/base_monetaria).';
+  return STATE.baseMonetaria;
+}
+
 async function loadCanasta(){
   const doc = await leerIndicadorFS('canasta');
   const u = doc?.ultimo;
@@ -732,6 +739,7 @@ function renderKPIs(){
     tiles.push({k:'UVA', v:'$'+fmt(last.valor,2), st:'', sub:'créditos y alquileres UVA · '+fmtDate(last.fecha)});
   }
   if(STATE.smvm){ tiles.push({k:'Salario mínimo (SMVM)', v:'$'+fmt(STATE.smvm.valor,0), st:'', sub: STATE.smvm.fecha?fmtDate(STATE.smvm.fecha):''}); }
+  if(STATE.baseMonetaria){ tiles.push({k:'Base Monetaria', v:'$'+fmt(STATE.baseMonetaria.valor,0)+' M', st:'', sub: fmtDate(STATE.baseMonetaria.fecha), exp:'El total de pesos en circulación + depósitos en cuenta corriente en el BCRA. Si crece rápido, suele anticipar más presión inflacionaria.'}); }
   if(STATE.cba){ tiles.push({k:'Canasta Básica Alimentaria', v:'$'+fmt(STATE.cba.valor,0), st:'', sub: STATE.cba.fecha?fmtDate(STATE.cba.fecha):'', exp:'Lo mínimo para no caer en indigencia (una persona).'}); }
   if(STATE.cbt){ tiles.push({k:'Canasta Básica Total', v:'$'+fmt(STATE.cbt.valor,0), st:'', sub: STATE.cbt.fecha?fmtDate(STATE.cbt.fecha):'', exp:'Lo mínimo para no caer en pobreza (una persona).'}); }
   // Favoritos: se guardan en localStorage del navegador (no en Firestore,
@@ -1544,7 +1552,7 @@ function compartirWhatsApp(){
 
 async function loadAll(){
   $('lastUpdate').textContent = 'actualizando…';
-  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias(), cargarEncuesta(), loadDolarHist()]);
+  const results = await Promise.allSettled([loadDolares(), loadRiesgo(), loadInflacion(), loadFeriados(), loadIndicadoresFirestore(), loadUVA(), loadREM(), loadEMAE(), loadSMVM(), loadCanasta(), loadNoticias(), cargarEncuesta(), loadDolarHist(), loadBaseMonetaria()]);
   results.forEach((r,i)=>{ if(r.status==='rejected') console.warn('Fuente #'+i+' falló', r.reason); });
   renderKPIs(); renderResumen(); renderSemaforo(); renderRiesgo(); renderBrecha(); renderUvaChart(); renderDolarChart(); renderInflacion(); renderFeriados(); renderNoticias(); renderCalendario(); renderDiagnostico();
   $('lastUpdate').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-AR',{hour12:false});
