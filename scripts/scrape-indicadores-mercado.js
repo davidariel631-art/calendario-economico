@@ -1,0 +1,423 @@
+// INDICADORES DE MERCADO (riesgo país, inflación, UVA, SMVM, canasta, feriados)
+// ------------------------------------------------------------------
+// Por qué existe este archivo: tanto ArgentinaDatos como Argly bloquean
+// CORS — no dejan que un navegador les pida datos directo, solo permiten
+// pedidos servidor-a-servidor. Eso significa que el panel NUNCA va a poder
+// leerlos directo desde el navegador del usuario, sin importar cuántos
+// reintentos o proxies le pongamos. La única solución real es traer estos
+// datos desde acá (Node, corriendo en GitHub Actions, sin navegador de por
+// medio) y guardarlos en Firestore. El panel después solo lee Firestore.
+//
+// Todos los campos de Argly están confirmados pidiéndolos directo
+// (no son adivinados): la respuesta viene envuelta en {"data": {...}}.
+
+import { getDb } from './firebase-admin.js';
+
+async function getJson(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+  return res.json();
+}
+
+// ------------------------------------------------------------------
+// CONTROL DE CALIDAD: rangos razonables por indicador. Si una fuente
+// devuelve un número fuera de estos límites (por un cambio de formato,
+// un error de la API, un campo mal interpretado, etc.), NO lo guardamos
+// — mejor mantener el dato anterior (que sabemos válido) que pisarlo con
+// basura en silencio. Los límites son generosos a propósito: no buscan
+// validar que el número sea "razonable hoy", sino filtrar errores
+// groseros (un campo en 0, un string mal parseado, un cero de más o de
+// menos).
+// ------------------------------------------------------------------
+const RANGOS = {
+  riesgo_pais: [0, 20000],        // puntos básicos
+  ipc_mensual: [-5, 40],          // % mensual
+  ipc_interanual: [0, 500],       // % interanual
+  uva: [1, 100000],
+  icl: [1, 10000],
+  smvm: [10000, 10000000],        // pesos
+  canasta_cba: [1000, 10000000],
+  canasta_cbt: [1000, 10000000],
+};
+
+function esValorRazonable(clave, valor) {
+  if (typeof valor !== 'number' || !isFinite(valor)) return false;
+  const rango = RANGOS[clave];
+  if (!rango) return true; // sin rango definido -> no filtramos de más
+  return valor >= rango[0] && valor <= rango[1];
+}
+
+function fechaISO(str) {
+  if (!str) return null;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : str;
+}
+
+async function guardar(db, key, registro, claveRango=key) {
+  if ('valor' in registro && !esValorRazonable(claveRango, registro.valor)) {
+    throw new Error(
+      `Control de calidad: el valor de "${key}" (${registro.valor}) está fuera del rango razonable ` +
+      `[${RANGOS[claveRango]?.join(' a ')}] — no se guarda, para no pisar el último dato válido con basura. ` +
+      `Revisar si la fuente cambió de formato.`
+    );
+  }
+  await db.collection('indicadores').doc(key).set({ ultimo: registro }, { merge: true });
+  await db.collection('indicadores').doc(key).collection('historico').doc(registro.fecha).set(registro, { merge: true });
+  console.log(`✅ ${key}:`, registro);
+}
+
+async function scrapeRiesgoPais(db) {
+  const { data } = await getJson('https://api.argly.com.ar/v1/riesgo-pais');
+  const { data: anterior } = await getJson('https://api.argly.com.ar/v1/riesgo-pais?anterior=true');
+  await guardar(db, 'riesgo_pais', {
+    valor: data.ultimo,
+    valorAnterior: anterior?.ultimo ?? null,
+    fecha: data.fecha,
+    tendencia: data.tendencia,
+    fuente: 'Argly (api.argly.com.ar), fuente original ' + (data.fuente || 'ambito.com'),
+    scrapedAt: new Date().toISOString(),
+  });
+}
+
+async function scrapeInflacion(db) {
+  const { data } = await getJson('https://api.argly.com.ar/v1/ipc');
+  await guardar(db, 'ipc_mensual', {
+    valor: data.indice_ipc,
+    unidad: '%',
+    fecha: `${data.anio}-${String(data.mes).padStart(2, '0')}`,
+    fechaProximoInforme: data.fecha_proximo_informe ? fechaISO(data.fecha_proximo_informe) : null,
+    fuente: 'Argly (api.argly.com.ar)',
+    scrapedAt: new Date().toISOString(),
+  });
+}
+
+async function scrapeInflacionInteranual(db) {
+  // Argly no trae la interanual en /v1/ipc — esta sigue viniendo de
+  // ArgentinaDatos, pero server-side (acá no hay problema de CORS).
+  const data = await getJson('https://api.argentinadatos.com/v1/finanzas/indices/inflacionInteranual');
+  const ultimo = data[data.length - 1];
+  await guardar(db, 'ipc_interanual', {
+    valor: ultimo.valor,
+    unidad: '%',
+    fecha: ultimo.fecha,
+    fuente: 'ArgentinaDatos (api.argentinadatos.com)',
+    scrapedAt: new Date().toISOString(),
+  });
+}
+
+async function scrapeUVA(db) {
+  const { data } = await getJson('https://api.argly.com.ar/v1/uva');
+  await guardar(db, 'uva', {
+    valor: data.valor,
+    fecha: fechaISO(data.fecha),
+    fuente: 'Argly (api.argly.com.ar)',
+    scrapedAt: new Date().toISOString(),
+  });
+}
+
+// Dólar histórico: DolarAPI (que usa el panel) da el valor de HOY, pero no
+// tiene endpoint de histórico. Guardamos nosotros un registro por día acá
+// para poder graficar la evolución con el tiempo (esto sí lo podíamos
+// pedir directo desde el navegador porque DolarAPI no bloquea CORS, pero
+// conviene una sola fuente de historial consistente en vez de mezclar).
+async function scrapeDolares(db) {
+  const data = await getJson('https://dolarapi.com/v1/dolares');
+  const hoy = new Date().toISOString().slice(0, 10);
+  const porCasa = { oficial: 'dolar_oficial', blue: 'dolar_blue', cripto: 'dolar_cripto', bolsa: 'dolar_mep', contadoconliqui: 'dolar_ccl' };
+
+  for (const [casa, key] of Object.entries(porCasa)) {
+    const item = data.find(d => d.casa === casa);
+    if (!item || typeof item.venta !== 'number') continue;
+    const registro = { valor: item.venta, valorCompra: item.compra, fecha: hoy, fuente: 'DolarAPI', scrapedAt: new Date().toISOString() };
+    // Rango de sanidad amplio a propósito — solo para filtrar un 0 o un
+    // error de parseo grosero, no para "opinar" sobre si el valor es alto.
+    if (registro.valor <= 0 || registro.valor > 100000000) {
+      console.warn(`⚠️  ${key} (${registro.valor}) fuera de rango razonable — no se guarda.`);
+      continue;
+    }
+    await guardar(db, key, registro);
+  }
+}
+
+// Oro valuado al dólar blue: la fuente internacional cotiza XAU en USD por
+// onza troy. Para expresar la misma referencia en pesos, se toma la venta
+// blue de DolarAPI y se divide por 31,1034768 gramos por onza troy. No es un
+// precio de joyería ni una cotización local física: es una comparación de
+// mercado explícitamente identificada como tal en la interfaz.
+async function scrapeOroAlBlue(db) {
+  const [oro, dolares] = await Promise.all([
+    getJson('https://api.gold-api.com/price/XAU'),
+    getJson('https://dolarapi.com/v1/dolares'),
+  ]);
+  const precioOnzaUSD = Number(oro.price);
+  const blue = dolares.find(d => d.casa === 'blue');
+  const ventaBlue = Number(blue?.venta);
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (!Number.isFinite(precioOnzaUSD) || precioOnzaUSD <= 0 || precioOnzaUSD > 100000) throw new Error(`Oro: precio XAU inválido (${oro.price}).`);
+  if (!Number.isFinite(ventaBlue) || ventaBlue <= 0 || ventaBlue > 100000000) throw new Error(`Oro: dólar blue inválido (${blue?.venta}).`);
+  const valorOnzaARS = precioOnzaUSD * ventaBlue;
+  const valorGramoARS = valorOnzaARS / 31.1034768;
+  await guardar(db, 'oro_pesos_blue', {
+    valor: valorGramoARS,
+    unidad: 'ARS por gramo',
+    valorOnzaUSD: precioOnzaUSD,
+    valorOnzaARS,
+    ventaBlue,
+    fecha: hoy,
+    fuente: 'Gold API (XAU USD/oz) × DolarAPI (blue venta) ÷ 31,1034768 g/oz',
+    scrapedAt: new Date().toISOString(),
+  }, null);
+}
+
+// La web de Bull Market usa esta API pública para su propia ficha de renta
+// fija. El navegador de KRAX no puede consultarla por CORS, por lo que se
+// lee del lado del actualizador y se publica en Firestore. Se conserva la
+// TIR de liquidación 24 h junto con precio, paridad y variación; no se estima
+// una tasa cuando alguno de esos campos no llega en la respuesta.
+async function scrapeBonosSoberanos(db) {
+  const simbolos = ['AL30', 'GD30'];
+  const respuestas = await Promise.all(simbolos.map((symbol) => getJson(
+    `https://bullmarket.com.ar/wp-content/themes/sasico/cotizaciones/api.php?type=detailBond&symbol=${encodeURIComponent(symbol)}`,
+    { headers: { 'User-Agent': 'KRAX mercado público/1.0' } },
+  )));
+  const lista = respuestas.map((data, index) => {
+    const mercado = data.settlement24H ?? data.ci ?? {};
+    const tir = Number(mercado.yieldToMaturity);
+    const precio = Number(mercado.lastPrice);
+    const paridad = Number(mercado.parity);
+    const variacion = typeof mercado.dailyVariation === 'number' ? mercado.dailyVariation : null;
+    if (!Number.isFinite(tir) || tir < 0 || tir > 200) throw new Error(`${simbolos[index]}: TIR inválida (${mercado.yieldToMaturity}).`);
+    if (!Number.isFinite(precio) || precio <= 0 || precio > 1000000000) throw new Error(`${simbolos[index]}: precio inválido (${mercado.lastPrice}).`);
+    if (!Number.isFinite(paridad) || paridad <= 0 || paridad > 200) throw new Error(`${simbolos[index]}: paridad inválida (${mercado.parity}).`);
+    return {
+      ticker: data.symbol ?? simbolos[index],
+      nombre: data.name ?? null,
+      tir,
+      precio,
+      paridad,
+      variacion,
+      liquidacion: '24 h',
+      monedaCotizacion: data.quotationCurrency ?? null,
+      monedaPago: data.paymentCurrency ?? null,
+      ley: data.law ?? null,
+      vencimiento: data.maturityDate ?? null,
+      fuenteCampoTIR: 'settlement24H.yieldToMaturity',
+    };
+  });
+  const fecha = new Date().toISOString().slice(0, 10);
+  const registro = {
+    lista,
+    fecha,
+    fuente: 'Bull Market Brokers · API pública de cotizaciones de renta fija',
+    metodo: 'TIR publicada por la fuente, liquidación 24 h',
+    scrapedAt: new Date().toISOString(),
+  };
+  await db.collection('indicadores').doc('bonos_soberanos').set(registro, { merge: true });
+  await db.collection('indicadores').doc('bonos_soberanos').collection('historico').doc(fecha).set(registro, { merge: true });
+  console.log(`✅ bonos soberanos: ${lista.map(bono => `${bono.ticker} ${bono.tir}%`).join(' · ')}`);
+}
+
+async function scrapeSMVM(db) {
+  const { data } = await getJson('https://api.argly.com.ar/v1/smvm');
+  await guardar(db, 'smvm', {
+    valor: data.smvm,
+    fecha: fechaISO(data.vigente_desde),
+    fuente: data.fuente || 'Argly (api.argly.com.ar)',
+    scrapedAt: new Date().toISOString(),
+  });
+}
+
+async function scrapeCanasta(db) {
+  const { data } = await getJson('https://api.argly.com.ar/v1/canasta');
+  const fecha = data.periodo || data.fecha_publicacion;
+  const cba = data.cba?.adulto_equivalente ?? null;
+  const cbt = data.cbt?.adulto_equivalente ?? null;
+
+  if (!esValorRazonable('canasta_cba', cba)) throw new Error(`Control de calidad: CBA (${cba}) fuera de rango razonable — no se guarda.`);
+  if (!esValorRazonable('canasta_cbt', cbt)) throw new Error(`Control de calidad: CBT (${cbt}) fuera de rango razonable — no se guarda.`);
+  if (cbt !== null && cba !== null && cbt < cba) throw new Error(`Control de calidad: CBT (${cbt}) no puede ser menor que CBA (${cba}) — algo está mal en la fuente, no se guarda.`);
+
+  await guardar(db, 'canasta', {
+    cbaAdultoEquivalente: cba,
+    cbtAdultoEquivalente: cbt,
+    fecha,
+    fuente: 'Argly (api.argly.com.ar)',
+    scrapedAt: new Date().toISOString(),
+  }, null); // null = sin chequeo genérico de "valor" (ya lo hicimos arriba a mano)
+}
+
+async function scrapeFeriados(db) {
+  const year = new Date().getFullYear();
+  const data = await getJson(`https://api.argentinadatos.com/v1/feriados/${year}`);
+  // Este es un array completo, no un "último dato" — lo guardamos entero
+  // en un solo doc (no tiene sentido un historico/ acá).
+  await db.collection('indicadores').doc('feriados').set({
+    anio: year,
+    lista: data,
+    fuente: 'ArgentinaDatos (api.argentinadatos.com)',
+    scrapedAt: new Date().toISOString(),
+  }, { merge: true });
+  console.log(`✅ feriados ${year}: ${data.length} cargados`);
+}
+
+async function scrapeICL(db) {
+  const { data } = await getJson('https://api.argly.com.ar/v1/icl');
+  await guardar(db, 'icl', {
+    valor: data.valor,
+    fecha: fechaISO(data.fecha),
+    fuente: 'Argly (api.argly.com.ar)',
+    scrapedAt: new Date().toISOString(),
+  });
+}
+
+// Busca una variable del BCRA por texto en su descripción, en vez de
+// hardcodear un idVariable a ciegas (ya nos pasó de poner un número mal).
+// Trae la lista COMPLETA de variables una sola vez y busca por texto.
+let _cacheVariablesBCRA = null;
+async function buscarVariableBCRA(textoBuscado) {
+  if (!_cacheVariablesBCRA) {
+    const json = await getJson('https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias');
+    _cacheVariablesBCRA = json.results || [];
+  }
+  return _cacheVariablesBCRA.find(v => v.descripcion?.toLowerCase().includes(textoBuscado.toLowerCase()));
+}
+
+async function scrapeBaseMonetaria(db) {
+  const variable = await buscarVariableBCRA('base monetaria');
+  if (!variable) throw new Error('No se encontró "Base Monetaria" en el listado de variables del BCRA — puede que hayan cambiado el nombre exacto.');
+
+  const json = await getJson(`https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/${variable.idVariable}`);
+  const detalle = json?.results?.[0]?.detalle || [];
+  if (!detalle.length) throw new Error('Base Monetaria: sin detalle en la respuesta.');
+  const ultimo = [...detalle].sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+
+  if (typeof ultimo.valor !== 'number' || ultimo.valor <= 0) {
+    throw new Error(`Control de calidad: Base Monetaria (${ultimo.valor}) fuera de rango razonable.`);
+  }
+
+  await guardar(db, 'base_monetaria', {
+    valor: ultimo.valor,
+    unidad: variable.unidadExpresion || 'Millones de $',
+    fecha: ultimo.fecha,
+    descripcionOficial: variable.descripcion,
+    fuente: `api.bcra.gob.ar (idVariable ${variable.idVariable}, encontrado por nombre)`,
+    scrapedAt: new Date().toISOString(),
+  }, null);
+}
+
+// BADLAR: confirmado contra la API oficial del BCRA (misma que usamos para
+// Reservas) — idVariable 7. Es la tasa de referencia que pagan los bancos
+// por depósitos grandes ($1M+) a plazo fijo, y sirve como termómetro de
+// las tasas del sistema en general (a diferencia del plazo fijo minorista
+// que ya mostramos en Finanzas).
+async function scrapeBadlar(db) {
+  const variable = await buscarVariableBCRA('badlar');
+  if (!variable) throw new Error('No se encontró "BADLAR" en el listado de variables del BCRA.');
+
+  const json = await getJson(`https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/${variable.idVariable}`);
+  const detalle = json?.results?.[0]?.detalle || [];
+  if (!detalle.length) throw new Error('BADLAR: la API no devolvió detalle.');
+  const ultimo = [...detalle].sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+
+  if (typeof ultimo.valor !== 'number' || ultimo.valor <= 0 || ultimo.valor > 500) {
+    throw new Error(`Control de calidad: BADLAR (${ultimo.valor}%) fuera de rango razonable — no se guarda.`);
+  }
+
+  await guardar(db, 'badlar', {
+    valor: ultimo.valor,
+    unidad: '%',
+    fecha: ultimo.fecha,
+    descripcionOficial: variable.descripcion,
+    fuente: `api.bcra.gob.ar (idVariable ${variable.idVariable}, encontrado por nombre)`,
+    scrapedAt: new Date().toISOString(),
+  }, null);
+}
+
+// Plazos fijos: confirmado en el manual oficial del desarrollador del BCRA
+// — el endpoint es "PlazosFijos" (plural), y los campos son
+// descripcionEntidad / tasaEfectivaAnualMinima / montoMinimoInvertir.
+async function scrapePlazosFijos(db) {
+  const json = await getJson('https://api.bcra.gob.ar/transparencia/v1.0/PlazosFijos');
+  const lista = (json.results || [])
+    .filter(r => typeof r.tasaEfectivaAnualMinima === 'number' && r.tasaEfectivaAnualMinima > 0)
+    .map(r => ({
+      entidad: r.descripcionEntidad,
+      tasa: r.tasaEfectivaAnualMinima,
+      montoMinimo: r.montoMinimoInvertir ?? null,
+      fechaInformacion: r.fechaInformacion,
+    }))
+    .sort((a, b) => b.tasa - a.tasa)
+    .slice(0, 20);
+
+  await db.collection('indicadores').doc('plazos_fijos').set({
+    lista,
+    fuente: 'BCRA — API de Régimen de Transparencia v1.0',
+    scrapedAt: new Date().toISOString(),
+  }, { merge: true });
+  console.log(`✅ plazos fijos: ${lista.length} entidades`);
+}
+
+// Combustibles: promedio nacional simple usando Buenos Aires como
+// referencia (Argly pide provincia obligatoria). Si más adelante querés
+// por provincia real del usuario, hay que sumar un scrape por cada una.
+async function scrapeCombustibles(db) {
+  const provincia = 'buenos-aires';
+  const tipos = [
+    ['super', 'nafta-super'],
+    ['premium', 'nafta-premium'],
+    // Gasoil: probé "gasoil", "gas-oil" y "diesel" y los 3 dan 404 — Argly
+    // no expone este combustible bajo ningún nombre que pudimos confirmar.
+    // Se saca en vez de repetir un error semana tras semana.
+  ];
+  const precios = {};
+  for (const [key, slug] of tipos) {
+    try {
+      const { data } = await getJson(`https://api.argly.com.ar/v1/combustibles/promedio?provincia=${provincia}&combustible=${slug}`);
+      precios[key] = data.precio_promedio ?? null;
+    } catch (e) {
+      console.warn(`⚠️  combustible ${slug} falló:`, e.message);
+      precios[key] = null;
+    }
+  }
+  await db.collection('indicadores').doc('combustibles').set({
+    provincia,
+    precios,
+    fuente: 'Argly (api.argly.com.ar)',
+    scrapedAt: new Date().toISOString(),
+  }, { merge: true });
+  console.log('✅ combustibles:', precios);
+}
+
+async function main() {
+  const db = getDb();
+  const tareas = [
+    ['riesgo país', scrapeRiesgoPais],
+    ['inflación (IPC)', scrapeInflacion],
+    ['inflación interanual', scrapeInflacionInteranual],
+    ['UVA', scrapeUVA],
+    ['dólares (histórico)', scrapeDolares],
+    ['oro valuado al blue', scrapeOroAlBlue],
+    ['bonos soberanos (TIR)', scrapeBonosSoberanos],
+    ['ICL', scrapeICL],
+    ['SMVM', scrapeSMVM],
+    ['canasta básica', scrapeCanasta],
+    ['feriados', scrapeFeriados],
+    ['plazos fijos', scrapePlazosFijos],
+    ['BADLAR', scrapeBadlar],
+    ['Base Monetaria', scrapeBaseMonetaria],
+    ['combustibles', scrapeCombustibles],
+  ];
+
+  let huboError = false;
+  for (const [nombre, fn] of tareas) {
+    try {
+      await fn(db);
+    } catch (err) {
+      huboError = true;
+      console.error(`❌ Error en ${nombre}:`, err.message);
+    }
+  }
+  if (huboError) process.exit(1);
+}
+
+main();

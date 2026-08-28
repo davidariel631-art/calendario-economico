@@ -1,0 +1,30 @@
+{
+  "name": "scraper-arg-economico",
+  "version": "2.0.0",
+  "description": "Publica indicadores económicos argentinos desde fuentes oficiales verificables, con históricos de reservas, deuda y resultado fiscal cuando las planillas oficiales los permiten.",
+  "type": "module",
+  "scripts": {
+    "reservas": "node scripts/scrape-bcra-reservas.js",
+    "cambiario": "node scripts/scrape-bcra-balance-cambiario.js",
+    "mercado": "node scripts/scrape-indicadores-mercado.js",
+    "hogar": "node scripts/scrape-bcra-hogar.js",
+    "deuda": "node scripts/scrape-deuda-publica.js",
+    "fiscal": "node scripts/scrape-resultado-fiscal.js",
+    "ied": "node scripts/scrape-inversion-directa.js",
+    "reservas:backfill": "BACKFILL=1 node scripts/scrape-bcra-reservas.js",
+    "deuda:backfill": "node scripts/backfill-deuda-publica.js",
+    "fiscal:backfill": "node scripts/backfill-resultado-fiscal.js",
+    "hogar:backfill": "BACKFILL=1 node scripts/scrape-bcra-hogar.js",
+    "noticias": "node scripts/scrape-noticias.js",
+    "actualidad": "node scripts/scrape-actualidad-oficial.js",
+    "notificaciones": "node scripts/send-notificaciones.js",
+    "backfill": "node scripts/backfill-historico.js",
+    "all": "npm run reservas && npm run cambiario && npm run mercado && npm run hogar && npm run deuda && npm run fiscal && npm run ied && npm run actividad && npm run noticias",
+    "actividad": "node scripts/scrape-actividad-economica.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "xlsx": "^0.18.5",
+    "undici": "^6.19.0"
+  }
+}
